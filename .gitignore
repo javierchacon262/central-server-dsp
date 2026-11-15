@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Entorno local y datos
+.env
+*.db
+*.db-shm
+*.db-wal
+
+# Editor y sistema
+.vscode/
+.idea/
+.DS_Store
