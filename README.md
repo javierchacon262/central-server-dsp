@@ -20,9 +20,10 @@ escribir código, y cada decisión queda registrada en este README.
 > - la [especificación v1](especificacion/) con sus ejemplos JSON;
 > - los canvas del [central (CS-003) y del script de conformidad (CS-004)](spdd/prompt/).
 >
-> Hay 23 decisiones y 2 pendientes que no bloquean. El objetivo de hoy, domingo 15 de
-> noviembre (D18), es publicar el central en `https://dsp.cshire.io` y la parte
-> automática del script.
+> Hay 23 decisiones y 2 pendientes que no bloquean. El central está escrito según CS-003
+> y sus 198 pruebas pasan en el contenedor; la parte automática del script de conformidad
+> está en [`conformidad/`](conformidad/). Falta desplegarlo en `https://dsp.cshire.io`, el
+> objetivo de hoy, domingo 15 de noviembre (D18).
 
 ```mermaid
 flowchart LR
@@ -81,6 +82,21 @@ detalles se fijan en la especificación:
 | Central (auxiliar) | `/admin/…` | Rutas de administración con token (D17) |
 | Grupo (lo llama el central) | `GET /fed/health` | Nombre del servidor y reloj de Lamport actual |
 | Grupo (lo llama el central) | `POST /fed/messages` | Recibir un mensaje reenviado |
+
+## Cómo correrlo
+
+Todo corre en contenedores (regla 6 de [`AGENTS.md`](AGENTS.md)).
+
+| Para | Comando |
+|---|---|
+| Central en el portátil, en `http://localhost:9000` | `docker compose up --build` |
+| Pruebas del central (incluye el contrato contra `especificacion/`) | `docker compose run --rm --build pruebas` |
+| Pruebas del script de conformidad | `docker compose run --rm --build pruebas-conformidad` |
+| Preparar la VM y levantar central y Caddy | `ssh ubuntu@IP 'ADMIN_TOKEN=… bash -s' < despliegue/preparar-vm.sh` |
+| Actualizar la VM a lo último de `main` | el mismo comando; el `.env` ya existe y no pide el token |
+
+La configuración va en `.env`, a partir de [`.env.example`](.env.example). En el portátil de
+respaldo (D10) se deja `PUBLICAR` vacío y se pone `PERMITIR_URL_PRIVADAS=true`.
 
 ## Metodología: SPDD
 

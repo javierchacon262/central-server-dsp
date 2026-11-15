@@ -138,6 +138,7 @@ central-server-dsp/
 ├── docker-compose.yml        central · caddy (perfil nube) · pruebas (perfil pruebas)
 ├── Caddyfile                 {$DOMINIO} → central:9000, cuerpos ≤ 1 MB
 ├── .env.example              variables de CS-002 §9, sin valores secretos
+├── despliegue/preparar-vm.sh swap, iptables, Docker, clon y compose en la VM (paso 9)
 ├── especificacion/           OpenAPI, ejemplos JSON, CHANGELOG y guía para grupos
 └── servidor/
     ├── Dockerfile            base → pruebas | servidor; usuario 10001; HEALTHCHECK /health

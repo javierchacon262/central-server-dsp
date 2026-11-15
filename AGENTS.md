@@ -24,7 +24,13 @@ El 2026-11-14 se creó el repositorio y se cerró la ronda 1 de decisiones (D01�
 
 Están la historia CS-001 con HU1–HU12, el análisis CS-002, la especificación v1 en
 [`especificacion/`](especificacion/) y los canvas CS-003 y CS-004. El auxiliar los
-aprobó el 2026-11-15 con las propuestas A1–A16 (D23): ya se puede escribir el código.
+aprobó el 2026-11-15 con las propuestas A1–A16 (D23). Ese mismo día se escribieron:
+
+- el central en [`servidor/`](servidor/), con 198 pruebas que pasan en el contenedor,
+  entre ellas la de contrato contra `especificacion/`;
+- el compose con Caddy en el perfil `nube` y el script
+  [`despliegue/preparar-vm.sh`](despliegue/preparar-vm.sh) para la VM;
+- la parte automática del script de conformidad en [`conformidad/`](conformidad/).
 
 Leer en este orden:
 
@@ -71,12 +77,7 @@ Leer en este orden:
 
 ## Próximos pasos, en orden
 
-1. Escribir juntos, para una sola aprobación (D22):
-   - el análisis en `spdd/analysis/`, con el contrato de cada ruta;
-   - la especificación OpenAPI y los ejemplos JSON;
-   - los canvas del central y del script de conformidad.
-2. Con la aprobación del auxiliar: código y pruebas del central.
-3. Desplegar en la VM de Oracle (D08) con el dominio `dsp.cshire.io` (D09).
-4. Código de la parte automática del script de conformidad.
-5. Publicar la versión 1 y anunciarla en el foro a todos a la vez (D18, D19).
-6. Cerrar P12 (parte guiada del script) y P13 (reinicio del historial antes de la sesión).
+1. Desplegar en la VM de Oracle (D08) con el dominio `dsp.cshire.io` (D09), con
+   `despliegue/preparar-vm.sh`, y comprobar desde fuera el paso 9 de CS-003.
+2. Publicar la versión 1 y anunciarla en el foro a todos a la vez (D18, D19).
+3. Cerrar P12 (parte guiada del script) y P13 (reinicio del historial antes de la sesión).
