@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Servidor central · #general</title>
+  <style>
+    :root {
+      --fondo: #f6f7f9; --panel: #ffffff; --texto: #1d2330; --suave: #5d6677;
+      --borde: #dfe3ea; --acento: #2156c4; --vivo: #1f7a3a; --vivo-fondo: #e3f4e8;
+      --caido: #b3261e; --caido-fondo: #fbe5e3; --marca: #eef2fb;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --fondo: #12151b; --panel: #1a1f27; --texto: #e6e9ef; --suave: #9aa3b2;
+        --borde: #2c3340; --acento: #8ab0ff; --vivo: #7ad696; --vivo-fondo: #173322;
+        --caido: #ff9b93; --caido-fondo: #3a1b19; --marca: #222a38;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--fondo); color: var(--texto);
+      font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    header, main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+    header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+    h1 { font-size: 1.35rem; margin: 0; }
+    h2 { font-size: 1rem; margin: 0 0 8px; color: var(--suave); font-weight: 600; }
+    #estado { color: var(--suave); font-size: .9rem; }
+    #estado.error { color: var(--caido); }
+    section {
+      background: var(--panel); border: 1px solid var(--borde); border-radius: 10px;
+      padding: 14px; margin-bottom: 16px;
+    }
+    .tabla { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--borde); white-space: nowrap; }
+    th { color: var(--suave); font-weight: 600; }
+    td.url { max-width: 280px; overflow: hidden; text-overflow: ellipsis; color: var(--suave); }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .8rem; font-weight: 600; }
+    .chip.up { color: var(--vivo); background: var(--vivo-fondo); }
+    .chip.down { color: var(--caido); background: var(--caido-fondo); }
+    .vacio { color: var(--suave); font-style: italic; }
+    #general { list-style: none; margin: 0; padding: 0; max-height: 60vh; overflow-y: auto; }
+    #general li { padding: 6px 4px; border-bottom: 1px solid var(--borde); overflow-wrap: anywhere; }
+    .meta { font-size: .8rem; color: var(--suave); display: flex; flex-wrap: wrap; gap: 4px 10px; }
+    .marca { background: var(--marca); border-radius: 4px; padding: 0 5px; font-variant-numeric: tabular-nums; }
+    .autor { font-weight: 600; color: var(--acento); }
+    .cuerpo { white-space: pre-wrap; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Servidor central</h1>
+    <span id="estado">Conectando…</span>
+  </header>
+  <main>
+    <section>
+      <h2>Servidores registrados</h2>
+      <div class="tabla">
+        <table id="servidores">
+          <thead>
+            <tr>
+              <th>Servidor</th><th>Modo</th><th>Estado</th><th>Última señal</th>
+              <th>Lamport</th><th>Entregado</th><th>Pendientes</th><th>URL</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+    <section>
+      <h2>#general · orden (lamport, origin)</h2>
+      <ol id="general"></ol>
+    </section>
+  </main>
+  <script>
+    "use strict";
+    // Todo lo que viene de los grupos se pinta con textContent: nunca se interpreta
+    // como HTML (salvaguarda 9).
+    const PERIODO_MS = 2000;
+    const MAX_VISIBLES = 2000;
+    const mensajes = new Map();
+    let ultimoSeq = 0;
+
+    function celda(fila, texto, clase) {
+      const td = document.createElement("td");
+      if (clase) td.className = clase;
+      td.textContent = texto;
+      fila.appendChild(td);
+      return td;
+    }
+
+    function hace(fechaIso) {
+      if (!fechaIso) return "—";
+      const s = Math.max(0, Math.round((Date.now() - Date.parse(fechaIso)) / 1000));
+      if (s < 60) return `hace ${s} s`;
+      if (s < 3600) return `hace ${Math.floor(s / 60)} min`;
+      return new Date(fechaIso).toLocaleString("es-CO");
+    }
+
+    function pintarServidores(datos) {
+      const cuerpo = document.querySelector("#servidores tbody");
+      cuerpo.replaceChildren();
+      if (datos.servers.length === 0) {
+        const fila = document.createElement("tr");
+        celda(fila, "Todavía no hay servidores registrados.", "vacio").colSpan = 8;
+        cuerpo.appendChild(fila);
+        return;
+      }
+      for (const s of datos.servers) {
+        const fila = document.createElement("tr");
+        celda(fila, s.server);
+        celda(fila, s.mode);
+        const estado = celda(fila, "");
+        const chip = document.createElement("span");
+        chip.className = `chip ${s.state === "up" ? "up" : "down"}`;
+        chip.textContent = s.state === "up" ? "vivo" : "caído";
+        estado.appendChild(chip);
+        celda(fila, hace(s.last_seen)).title = s.last_seen || "";
+        celda(fila, s.lamport ?? "—", "num");
+        celda(fila, s.delivered_seq ?? "—", "num");
+        celda(fila, s.pending ?? "—", "num");
+        celda(fila, s.url ?? "—", "url").title = s.url || "";
+        cuerpo.appendChild(fila);
+      }
+    }
+
+    function comparar(a, b) {
+      if (a.lamport !== b.lamport) return a.lamport - b.lamport;
+      if (a.origin !== b.origin) return a.origin < b.origin ? -1 : 1;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    }
+
+    function pintarGeneral() {
+      const lista = document.getElementById("general");
+      const alFinal = lista.scrollHeight - lista.scrollTop - lista.clientHeight < 40;
+      const orden = [...mensajes.values()].sort(comparar).slice(-MAX_VISIBLES);
+      lista.replaceChildren();
+      if (orden.length === 0) {
+        const li = document.createElement("li");
+        li.className = "vacio";
+        li.textContent = "Todavía no hay mensajes en #general.";
+        lista.appendChild(li);
+      }
+      for (const m of orden) {
+        const li = document.createElement("li");
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        const marca = document.createElement("span");
+        marca.className = "marca";
+        marca.textContent = `L ${m.lamport}`;
+        const autor = document.createElement("span");
+        autor.className = "autor";
+        autor.textContent = m.from;
+        const origen = document.createElement("span");
+        origen.textContent = `origen ${m.origin}`;
+        const seq = document.createElement("span");
+        seq.textContent = `seq ${m.seq}`;
+        meta.append(marca, autor, origen, seq);
+        if (m.sent_at) {
+          const enviado = document.createElement("span");
+          enviado.textContent = m.sent_at;
+          meta.appendChild(enviado);
+        }
+        const cuerpo = document.createElement("div");
+        cuerpo.className = "cuerpo";
+        cuerpo.textContent = m.body;
+        li.append(meta, cuerpo);
+        lista.appendChild(li);
+      }
+      if (alFinal) lista.scrollTop = lista.scrollHeight;
+    }
+
+    async function pedir(ruta) {
+      const respuesta = await fetch(ruta, { cache: "no-store" });
+      if (!respuesta.ok) throw new Error(`${ruta}: ${respuesta.status}`);
+      return respuesta.json();
+    }
+
+    async function actualizar() {
+      const estado = document.getElementById("estado");
+      try {
+        const servidores = await pedir("/servers");
+        pintarServidores(servidores);
+        let nuevos = 0;
+        for (;;) {
+          const lote = await pedir(`/history?after_seq=${ultimoSeq}&limit=1000`);
+          for (const m of lote) {
+            mensajes.set(m.id, m);
+            ultimoSeq = Math.max(ultimoSeq, m.seq);
+          }
+          nuevos += lote.length;
+          if (lote.length < 1000) break;
+        }
+        if (nuevos > 0 || mensajes.size === 0) pintarGeneral();
+        const vivos = servidores.servers.filter((s) => s.state === "up").length;
+        estado.className = "";
+        estado.textContent = `${vivos} de ${servidores.servers.length} servidores vivos · ` +
+          `${mensajes.size} mensajes · último seq ${servidores.last_seq} · ` +
+          `actualizado ${new Date().toLocaleTimeString("es-CO")}`;
+      } catch (e) {
+        estado.className = "error";
+        estado.textContent = `Sin conexión con el central (${e.message}). Reintentando…`;
+      } finally {
+        setTimeout(actualizar, PERIODO_MS);
+      }
+    }
+
+    actualizar();
+  </script>
+</body>
+</html>
