@@ -23,8 +23,8 @@ El 2026-11-14 se creó el repositorio y se cerró la ronda 1 de decisiones (D01�
 - una sola aprobación del auxiliar antes del código (D22).
 
 Están la historia CS-001 con HU1–HU12, el análisis CS-002, la especificación v1 en
-[`especificacion/`](especificacion/) y los canvas CS-003 y CS-004, pendientes de la
-aprobación única del auxiliar (D22). **No hay código.**
+[`especificacion/`](especificacion/) y los canvas CS-003 y CS-004. El auxiliar los
+aprobó el 2026-11-15 con las propuestas A1–A16 (D23): ya se puede escribir el código.
 
 Leer en este orden:
 

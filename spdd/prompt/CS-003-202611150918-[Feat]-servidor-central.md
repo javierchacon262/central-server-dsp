@@ -6,8 +6,8 @@
 | Historia | [CS-001](../../requirements/CS-001-202611142129-[Story]-servidor-central.md), HU1–HU7, HU10–HU12 |
 | Análisis | [CS-002](../analysis/CS-002-202611150918-[Analysis]-protocolo-y-central.md) |
 | Especificación | [`especificacion/openapi-central.yaml`](../../especificacion/openapi-central.yaml) |
-| Estado | Borrador para la aprobación única del auxiliar (D22) |
-| Revisado por | — |
+| Estado | Aprobado (D23) |
+| Revisado por | Javier Chacón, auxiliar, 2026-11-15 |
 
 ## R · Requirements (requisitos)
 

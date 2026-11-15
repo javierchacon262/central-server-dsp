@@ -6,7 +6,7 @@
 | Tipo | Análisis (paso 3 de SPDD) |
 | Historia | [CS-001](../../requirements/CS-001-202611142129-[Story]-servidor-central.md) |
 | Decisiones | D01–D22 del [log](../../README.md#log-de-decisiones) |
-| Estado | Borrador para la aprobación única del auxiliar (D22) |
+| Estado | Aprobado (D23): las propuestas A1–A16 quedan como decisión |
 | Fecha | 2026-11-15 |
 
 Este análisis fija el contrato de cada ruta, que es lo que la especificación OpenAPI

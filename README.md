@@ -13,16 +13,16 @@ escribir código, y cada decisión queda registrada en este README.
 
 ## Estado
 
-> **Fase actual: aprobación (D22).** Las rondas 1 y 2 de decisiones están cerradas: hay
-> 22 decisiones y 2 pendientes que no bloquean. Están escritos, para una sola revisión
-> del auxiliar:
+> **Fase actual: código (D23).** El auxiliar aprobó el 15 de noviembre, en una sola
+> revisión (D22), lo siguiente:
 >
-> - el [análisis CS-002](spdd/analysis/);
+> - el [análisis CS-002](spdd/analysis/), con las propuestas A1–A16;
 > - la [especificación v1](especificacion/) con sus ejemplos JSON;
 > - los canvas del [central (CS-003) y del script de conformidad (CS-004)](spdd/prompt/).
 >
-> El objetivo de hoy, domingo 15 de noviembre (D18), es publicar todo eso, el central en
-> `https://dsp.cshire.io` y la parte automática del script. **Todavía no hay código.**
+> Hay 23 decisiones y 2 pendientes que no bloquean. El objetivo de hoy, domingo 15 de
+> noviembre (D18), es publicar el central en `https://dsp.cshire.io` y la parte
+> automática del script.
 
 ```mermaid
 flowchart LR
@@ -35,8 +35,8 @@ flowchart LR
     T -.->|"cambia el comportamiento:<br/>primero el canvas"| CV
     classDef hecho fill:#2e7d32,stroke:#1b5e20,color:#ffffff
     classDef actual fill:#f9a825,stroke:#f57f17,color:#000000
-    class H,C hecho
-    class AN,ES,CV actual
+    class H,C,AN,ES,CV hecho
+    class G actual
 ```
 
 Verde: hecho. Amarillo: en curso.
@@ -131,6 +131,7 @@ Los archivos siguen el patrón `ID-AAAAMMDDhhmm-[Tipo]-descripcion.md`, con el p
 | D20 | **Idioma:** documentos y código en español; campos y rutas del protocolo en inglés, como en la sección 4. Cierra P10 | — | Es el idioma del curso, y el protocolo ya está en inglés en el enunciado | Norms | 2 |
 | D21 | **Flujo de Git:** una rama y un PR por cosa terminada, con Conventional Commits; nunca push directo a `main`, salvo el primer commit, que creó la rama. Cierra P11 | — | Cada cambio queda revisable y el registro de cambios de la especificación sale de los PR | Norms | 2 |
 | D22 | **Una sola aprobación antes del código:** el análisis, la especificación con los ejemplos y los canvas del central y del script se revisan juntos; aprobados, se escriben código, pruebas y despliegue | Dos aprobaciones (contrato y luego canvas); aprobar al final en el PR | Es lo más rápido que respeta la regla 1 de [`AGENTS.md`](AGENTS.md) y permite publicar hoy (D18) | O | 2 |
+| D23 | **Se aprueban el análisis CS-002, la especificación v1 y los canvas CS-003 y CS-004.** Las propuestas A1–A16 del análisis (§13) quedan como decisión: entre ellas, el tope de 100 servidores (A1), sin URL privadas en la nube (A2), `seq` que nunca se reutiliza (A7) y solo los seis campos de la sección 4 (A13) | Corregir antes de aprobar | Cierra la fase de aprobación (D22) y habilita el código, las pruebas y el despliegue de hoy (D18) | R, E, A, S, Safeguards | aprobación |
 
 ## Decisiones pendientes
 
