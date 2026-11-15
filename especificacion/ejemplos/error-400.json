@@ -1,0 +1,6 @@
+{
+  "error": "mensaje inválido",
+  "detail": [
+    {"field": "lamport", "problem": "debe ser un entero ≥ 0"}
+  ]
+}

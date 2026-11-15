@@ -1,0 +1,6 @@
+{
+  "error": "parámetros inválidos",
+  "detail": [
+    {"field": "after_seq", "problem": "no se puede combinar con since"}
+  ]
+}

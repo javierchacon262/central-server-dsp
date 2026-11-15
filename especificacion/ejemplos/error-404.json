@@ -1,0 +1,6 @@
+{
+  "error": "servidor no registrado",
+  "detail": [
+    {"field": "server", "problem": "no hay un servidor registrado con el nombre g7"}
+  ]
+}

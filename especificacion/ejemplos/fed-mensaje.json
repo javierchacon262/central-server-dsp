@@ -1,0 +1,9 @@
+{
+  "id": "6f1c2a9e-4b7d-4f0e-9a51-2c8e7d3b1f44",
+  "from": "ana@g3",
+  "origin": "g3",
+  "lamport": 42,
+  "sent_at": "2026-11-10T14:03:22Z",
+  "body": "¿Ya subieron el compose?",
+  "seq": 57
+}

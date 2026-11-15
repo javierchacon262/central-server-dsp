@@ -13,11 +13,16 @@ escribir código, y cada decisión queda registrada en este README.
 
 ## Estado
 
-> **Fase actual: análisis y especificación (paso 3 de SPDD).** Las rondas 1 y 2 de
-> decisiones están cerradas: hay 22 decisiones y 2 pendientes que no bloquean. El
-> objetivo de hoy, domingo 15 de noviembre (D18), es publicar la especificación v1 con
-> sus ejemplos JSON, el central en `https://dsp.cshire.io` y la parte automática del
-> script de conformidad. **Todavía no hay especificación ni código.**
+> **Fase actual: aprobación (D22).** Las rondas 1 y 2 de decisiones están cerradas: hay
+> 22 decisiones y 2 pendientes que no bloquean. Están escritos, para una sola revisión
+> del auxiliar:
+>
+> - el [análisis CS-002](spdd/analysis/);
+> - la [especificación v1](especificacion/) con sus ejemplos JSON;
+> - los canvas del [central (CS-003) y del script de conformidad (CS-004)](spdd/prompt/).
+>
+> El objetivo de hoy, domingo 15 de noviembre (D18), es publicar todo eso, el central en
+> `https://dsp.cshire.io` y la parte automática del script. **Todavía no hay código.**
 
 ```mermaid
 flowchart LR
@@ -31,7 +36,7 @@ flowchart LR
     classDef hecho fill:#2e7d32,stroke:#1b5e20,color:#ffffff
     classDef actual fill:#f9a825,stroke:#f57f17,color:#000000
     class H,C hecho
-    class AN,ES actual
+    class AN,ES,CV actual
 ```
 
 Verde: hecho. Amarillo: en curso.
@@ -92,9 +97,10 @@ Entities, Approach, Structure, Operations, Norms y Safeguards. Reglas:
 | Carpeta | Contenido |
 |---|---|
 | [`requirements/`](requirements/) | Historia CS-001 y el [extracto del enunciado](requirements/enunciado/extracto.md) |
-| `spdd/analysis/` | Análisis (paso 3): en curso |
+| [`spdd/analysis/`](spdd/analysis/) | Análisis CS-002: contrato de cada ruta, reenvío, persistencia, eventos y seguridad |
+| [`especificacion/`](especificacion/) | OpenAPI del central y de los grupos, ejemplos JSON, registro de cambios y guía para los grupos |
 | [`spdd/template/`](spdd/template/) | Plantilla del canvas REASONS |
-| `spdd/prompt/` | Canvas (paso 4): todavía no existe |
+| [`spdd/prompt/`](spdd/prompt/) | Canvas CS-003 (central) y CS-004 (script de conformidad) |
 
 Los archivos siguen el patrón `ID-AAAAMMDDhhmm-[Tipo]-descripcion.md`, con el prefijo `CS`
 (servidor central).

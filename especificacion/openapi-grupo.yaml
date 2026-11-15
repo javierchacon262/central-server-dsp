@@ -1,0 +1,220 @@
+openapi: 3.1.0
+info:
+  title: Servidor de grupo · rutas que llama el central (Sistemas Distribuidos, UIS)
+  version: 1.0.0
+  summary: Lo que cada servidor de grupo debe implementar para que el central le entregue mensajes en push.
+  description: >-
+    Rutas que todo servidor de grupo implementa según la sección 4 del enunciado y que el
+    servidor central llama a los servidores registrados en modo push (D11): un heartbeat
+    en `GET /fed/health` y la recepción de mensajes en `POST /fed/messages`. Un servidor
+    registrado en pull no recibe estas llamadas, pero el script de conformidad prueba las
+    dos rutas en todo servidor de grupo. La URL base es la `url` que el grupo registró en
+    `POST /register` del central (ver `openapi-central.yaml`), normalmente la URL pública
+    de un túnel. Esta especificación manda sobre el resumen de la sección 4; lo que le
+    agrega, como el campo `seq` de cada mensaje, se puede ignorar (D01). Los campos
+    desconocidos se ignoran sin error en las dos direcciones. Los cambios a esta
+    especificación se versionan en `especificacion/CHANGELOG.md`.
+servers:
+  - url: '{url}'
+    description: URL base del servidor de grupo, la misma que registró en el central.
+    variables:
+      url:
+        default: https://garden-orbit-candle-meadow.trycloudflare.com
+        description: >-
+          La `url` registrada en `POST /register`, sin `/` final; por ejemplo, la URL que
+          da `cloudflared tunnel --url http://localhost:8000`.
+tags:
+  - name: Federación
+    description: Rutas del servidor de grupo que llama el servidor central.
+
+paths:
+  /fed/health:
+    get:
+      tags: [Federación]
+      operationId: saludGrupo
+      summary: Heartbeat del servidor de grupo
+      description: |
+        El central la llama cada 5 s a cada servidor registrado en push, con 3 s de tiempo
+        de espera (D15). El grupo responde `2xx` con su nombre (`server`) y su reloj de
+        Lamport actual (`lamport`), como pide la sección 4; el script de conformidad lo
+        comprueba. Para el heartbeat basta el código: cualquier `2xx` cuenta como vivo, y
+        cualquier otra respuesta, o ninguna en 3 s, cuenta como fallo (A11). Si el cuerpo
+        trae un `lamport` entero, el central lo publica; no compara `server` con el nombre
+        registrado.
+
+        - Tres fallos seguidos marcan el servidor como caído (`state: down` en
+          `GET /servers` del central) y pausan las entregas a `POST /fed/messages`.
+        - El primer `2xx` lo marca vivo otra vez, y las entregas se retoman desde su
+          cursor, sin perder mensajes.
+        - El `lamport` reportado se publica en `GET /servers` del central.
+      responses:
+        '2XX':
+          description: Servidor vivo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FedHealth'
+              examples:
+                fed-health:
+                  summary: g1 vivo, con su reloj en 45
+                  value:
+                    server: "g1"
+                    lamport: 45
+        default:
+          description: >-
+            Cualquier otra respuesta, o ninguna en 3 s, o un error de conexión: el central
+            cuenta un fallo del heartbeat.
+
+  /fed/messages:
+    post:
+      tags: [Federación]
+      operationId: recibirMensaje
+      summary: Recibir un mensaje reenviado por el central
+      description: |
+        El central entrega aquí, a cada servidor registrado en push, cada mensaje de
+        `#general` cuyo `origin` no sea el nombre de ese servidor. Envía el mensaje con el
+        campo `seq` agregado (A10), uno a la vez y en orden de `seq`, con 3 s de tiempo de
+        espera. Un servidor que entra en push recibe desde el último `seq` existente en ese
+        momento; lo anterior lo recupera con `GET /history` del central (A6).
+
+        El servidor de grupo debe:
+
+        - descartar por `id` los mensajes que ya tiene y responder `2xx` también a esos,
+          sin efectos: la operación es idempotente (sección 4);
+        - al recibir un mensaje nuevo, ajustar su reloj a `max(local, lamport) + 1`, igual
+          que con lo que recibe por `GET /history` del central;
+        - ignorar sin error los campos desconocidos; `seq` se puede ignorar;
+        - responder en menos de 3 s.
+
+        Cómo interpreta el central la respuesta (D15):
+
+        | Respuesta | Interpretación | Qué hace el central |
+        |---|---|---|
+        | `2xx`, con cualquier cuerpo | Entregado | Avanza el cursor y sigue con el siguiente mensaje |
+        | `4xx` | Rechazado | No reintenta: registra `RECHAZADO_4XX`, avanza el cursor y sigue con el siguiente |
+        | `5xx`, timeout o error de conexión | Fallo transitorio | Reintenta el mismo mensaje, con el mismo `id`, tras `min(30, 2ⁿ⁻¹)` s con jitter y sin tope de intentos |
+
+        Mientras el heartbeat lo tiene por caído, el central no intenta entregar; cuando
+        vuelve a responder, retoma desde el cursor y reinicia la espera.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoredMessage'
+            examples:
+              fed-mensaje:
+                summary: El mensaje de ana@g3 reenviado a g1, con su `seq`
+                value:
+                  id: "6f1c2a9e-4b7d-4f0e-9a51-2c8e7d3b1f44"
+                  from: "ana@g3"
+                  origin: "g3"
+                  lamport: 42
+                  sent_at: "2026-11-10T14:03:22Z"
+                  body: "¿Ya subieron el compose?"
+                  seq: 57
+      responses:
+        '2XX':
+          description: >-
+            Entregado, sea nuevo o duplicado. El cuerpo es libre: el central no lo lee.
+        '4XX':
+          description: >-
+            Rechazado. El central no reintenta: registra `RECHAZADO_4XX` y sigue con el
+            siguiente mensaje, así que el grupo no recibe ese mensaje por esta vía.
+        '5XX':
+          description: >-
+            Fallo transitorio. El central reintenta el mismo mensaje con el mismo `id`, con
+            espera exponencial y sin tope de intentos. Un timeout o un error de conexión se
+            tratan igual.
+
+components:
+  schemas:
+    Message:
+      type: object
+      description: >-
+        Mensaje de la sala `#general` con el formato de la sección 4, tal como lo envía un
+        servidor de grupo en `POST /messages`. Un campo obligatorio ausente, vacío o de otro
+        tipo responde `400` (D12). Los campos desconocidos se aceptan y se ignoran sin
+        error (`additionalProperties: true`).
+      required: [id, from, origin, lamport]
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: >-
+            Identificador generado por el servidor de origen; nunca cambia, ni siquiera al
+            reenviar. Es la clave de deduplicación. Se recomienda un UUID, pero no se exige
+            (D12).
+        from:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: >-
+            Autor del mensaje. Se guarda y se reenvía tal cual; la forma `usuario@gN` es la
+            recomendada, pero no se exige.
+        origin:
+          type: string
+          minLength: 1
+          maxLength: 32
+          description: >-
+            Nombre del servidor de origen. El central no le reenvía el mensaje a ese
+            servidor. No se exige que esté registrado (D12).
+        lamport:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          description: >-
+            Marca del reloj de Lamport del servidor de origen. Debe ser un número entero:
+            `42` sí, y `42.0` se acepta como `42` (A15); `"42"`, `42.5` o `true` no. El
+            tope, 2⁵³ − 1, es el mayor entero que un cliente en JavaScript lee sin perder
+            precisión (A9). Se guarda tal cual y ordena el historial.
+        sent_at:
+          type: string
+          maxLength: 64
+          description: >-
+            Hora física de envío. Es informativo: no se valida su formato ni se usa para
+            ordenar. Si no viene, el central lo guarda y lo reenvía como `""` (A13). `null`
+            o un valor que no es texto responde `400`.
+        body:
+          type: string
+          maxLength: 10000
+          default: ""
+          description: >-
+            Texto del mensaje. Se guarda y se reenvía tal cual; si no viene, como `""`
+            (A13). `null` o un valor que no es texto responde `400`.
+
+    StoredMessage:
+      description: >-
+        Mensaje guardado por el central: el `Message` con el campo `seq` agregado. Es lo
+        que devuelve `GET /history` y lo que el central envía en push a
+        `POST {url}/fed/messages` (A10). Quien solo conoce la sección 4 puede ignorar `seq`.
+      allOf:
+        - $ref: '#/components/schemas/Message'
+        - type: object
+          required: [seq]
+          properties:
+            seq:
+              type: integer
+              minimum: 1
+              description: >-
+                Número de llegada al central, asignado por él: crece sin huecos y nunca se
+                reutiliza, ni siquiera después de `POST /admin/reset` (D05, A7).
+
+    FedHealth:
+      type: object
+      description: >-
+        Respuesta que el central espera de `GET {url}/fed/health` de cada grupo en push.
+        Los campos desconocidos se aceptan y se ignoran sin error
+        (`additionalProperties: true`).
+      required: [server, lamport]
+      additionalProperties: true
+      properties:
+        server:
+          type: string
+          description: Nombre del servidor de grupo.
+        lamport:
+          type: integer
+          minimum: 0
+          description: Valor actual del reloj de Lamport del grupo.

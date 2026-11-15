@@ -22,7 +22,9 @@ El 2026-11-14 se creó el repositorio y se cerró la ronda 1 de decisiones (D01�
 - especificación v1, central y parte automática del script publicados el domingo 15 (D18);
 - una sola aprobación del auxiliar antes del código (D22).
 
-Está la historia CS-001 con HU1–HU12. **No hay especificación ni código.**
+Están la historia CS-001 con HU1–HU12, el análisis CS-002, la especificación v1 en
+[`especificacion/`](especificacion/) y los canvas CS-003 y CS-004, pendientes de la
+aprobación única del auxiliar (D22). **No hay código.**
 
 Leer en este orden:
 
@@ -30,7 +32,10 @@ Leer en este orden:
    enunciado dice del central. La sección 4 es la base del protocolo (D01).
 2. [`README.md`](README.md): estado, log de decisiones y pendientes P01–P11.
 3. [`requirements/CS-001-…-[Story]-…`](requirements/): historias HU1–HU12 y criterios.
-4. [`spdd/template/REASONS-canvas.md`](spdd/template/REASONS-canvas.md): la plantilla.
+4. [`spdd/analysis/CS-002-…`](spdd/analysis/): el contrato de cada ruta y el
+   comportamiento del central.
+5. [`especificacion/`](especificacion/): OpenAPI, ejemplos y la guía para los grupos.
+6. [`spdd/prompt/`](spdd/prompt/): los canvas CS-003 (central) y CS-004 (conformidad).
 
 ## Reglas
 
