@@ -8,15 +8,19 @@ se trabaja con **SPDD**.
 
 ## Dónde quedó el trabajo
 
-El 2026-11-14 se creó el repositorio y se cerró la ronda 1 de decisiones (D01–D07):
+El 2026-11-14 se creó el repositorio y se cerró la ronda 1 de decisiones (D01–D07). El
+2026-11-15 se cerró la ronda 2 (D08–D22):
 
-- el protocolo de la sección 4 del enunciado como base;
-- dos despliegues, una VM en la nube y el portátil del auxiliar en la sala;
-- SPDD con los tres entregables;
-- una VM con Docker y Caddy;
-- el modo alternativo con cursor `seq`;
-- registro abierto;
-- un script de conformidad automático y guiado.
+- el central corre siempre en la nube, en `https://dsp.cshire.io`, sobre una VM gratuita
+  de Oracle Cloud con Docker y Caddy (D08–D10);
+- cada grupo elige con `mode` si recibe en pull, con el cursor `seq`, o en push, con un
+  túnel (D11);
+- validación de forma con `400` (D12), `since` inclusivo (D13), `/history` como lista con
+  `seq` y `after_seq` (D14);
+- reenvío push con un cursor de entrega por grupo (D15) y registro que no vence (D16);
+- panel público y rutas `/admin/…` con token (D17);
+- especificación v1, central y parte automática del script publicados el domingo 15 (D18);
+- una sola aprobación del auxiliar antes del código (D22).
 
 Está la historia CS-001 con HU1–HU12. **No hay especificación ni código.**
 
@@ -62,9 +66,12 @@ Leer en este orden:
 
 ## Próximos pasos, en orden
 
-1. Cerrar los pendientes que bloquean la especificación: P03, P05 y P06, y luego P02,
-   P04 y P08.
-2. Escribir el análisis en `spdd/analysis/` con el contrato de cada ruta.
-3. Escribir la especificación OpenAPI y los ejemplos JSON, y publicar la versión 1 (P08).
-4. Canvas y código del central; luego canvas y código del script de conformidad.
-5. Desplegar en la VM (P01) y ensayar la sesión con dos servidores de prueba.
+1. Escribir juntos, para una sola aprobación (D22):
+   - el análisis en `spdd/analysis/`, con el contrato de cada ruta;
+   - la especificación OpenAPI y los ejemplos JSON;
+   - los canvas del central y del script de conformidad.
+2. Con la aprobación del auxiliar: código y pruebas del central.
+3. Desplegar en la VM de Oracle (D08) con el dominio `dsp.cshire.io` (D09).
+4. Código de la parte automática del script de conformidad.
+5. Publicar la versión 1 y anunciarla en el foro a todos a la vez (D18, D19).
+6. Cerrar P12 (parte guiada del script) y P13 (reinicio del historial antes de la sesión).

@@ -4,7 +4,7 @@
 |---|---|
 | ID | CS-001 |
 | Tipo | Historia (paso 1 de SPDD) |
-| Estado | Borrador; ronda 1 de decisiones cerrada (D01–D07), pendientes abiertos en el [README](../README.md#decisiones-pendientes) |
+| Estado | Rondas 1 y 2 de decisiones cerradas (D01–D22); pendientes P12 y P13 en el [README](../README.md#decisiones-pendientes) |
 | Fecha | 2026-11-14 |
 | Fuente | [Extracto del enunciado](enunciado/extracto.md), secciones 2, 3, 4 y 7 |
 | Responsable | Javier Chacón, auxiliar del proyecto con aval del profesor |
@@ -17,11 +17,11 @@ trabajo en un auxiliar del curso, con criterio libre de diseño. Hay tres restri
 
 1. **Los grupos ya programan sobre la sección 4.** El central parte de ese protocolo y
    lo extiende sin romperlo ([D01](../README.md#log-de-decisiones)).
-2. **Tiene que funcionar en dos redes.** En la nube los grupos prueban toda la semana,
-   pero sus portátiles están detrás de NAT y el central no puede llamarlos. En la red de
-   la sala, el día de la sesión, sí puede. Por eso hay dos formas de recibir: *push*
-   (el central llama a `POST /fed/messages`) y *pull* (el grupo consulta con un cursor),
-   según D02, D04 y D05.
+2. **Los grupos están detrás de NAT.** El central corre en la nube toda la semana y
+   también en la sesión (D10), y los grupos corren en sus portátiles, a los que el
+   central no puede llamar. Por eso hay dos formas de recibir: *pull* (el grupo consulta
+   con un cursor) y *push* (el central llama a `POST /fed/messages` en la URL de un
+   túnel), según D05 y D11.
 3. **Los grupos necesitan saber si cumplen antes del 19 de noviembre.** El script de
    conformidad es la prueba objetiva, y el mínimo común, que vale el 40 % de la nota, se
    verifica con él (D07).
@@ -45,8 +45,8 @@ mi portátil, para que lo que se prueba en la semana sea lo mismo que corre en l
 - La configuración va por variables de entorno; nada queda escrito en el código.
 - El historial y el registro de servidores sobreviven a `docker compose restart`
   (SQLite en un volumen, D03).
-- En la VM, el central responde por HTTPS con un certificado válido (Caddy, D04). El
-  proveedor y el dominio están por decidir ([P01](../README.md#decisiones-pendientes)).
+- En la VM, el central responde por HTTPS con un certificado válido (Caddy, D04) en
+  `https://dsp.cshire.io`, sobre una VM gratuita de Oracle Cloud (D08, D09).
 
 ### HU2 · Registro de servidores
 
@@ -56,8 +56,8 @@ haga llegar los mensajes (requisito 4).
 - `POST /register` con `{"server": "gN", "url": "http://…"}` registra o renueva. Si el
   nombre ya existe, se actualiza su `url`.
 - El acceso es abierto: cualquier nombre se puede registrar (D06).
-- Cuándo vence un registro sin renovar: por decidir (P04).
-- Cómo queda un servidor en push o en pull: por decidir (P03).
+- El registro no vence; volver a registrarse actualiza la URL y el modo (D16).
+- Un campo opcional `mode` (`push` por defecto, o `pull`) dice cómo recibe (D11).
 
 ### HU3 · Recibir los mensajes de los grupos
 
@@ -68,8 +68,9 @@ garantía de que reintentar nunca los duplica (requisitos 5 y 6, figura 3).
 - Un `id` nuevo se guarda, recibe el siguiente número de secuencia (`seq`, D05) y se
   reenvía (HU4).
 - Un `id` ya conocido responde `200` sin efectos: es idempotente.
-- Un mensaje mal formado responde `4xx`, que el grupo no reintenta. Las reglas exactas
-  de validación y el código están por decidir (P05).
+- Un mensaje mal formado responde `400` con `{"error", "detail"}`, que el grupo no
+  reintenta. Solo se exigen `id`, `from`, `origin` y `lamport`, y un `body` de hasta
+  10 000 caracteres (D12).
 - Los campos desconocidos se ignoran sin error.
 
 ### HU4 · Reenviar a todos los registrados (push)
@@ -80,18 +81,17 @@ los demás, con el mismo `id` de origen.
 - Se reenvía a todos los registrados en push, excepto al de origen.
 - La entrega es al menos una vez: si un grupo no responde o responde `5xx`, se reintenta
   con backoff, sin frenar a los demás grupos.
-- Qué pasa con un grupo que lleva mucho tiempo caído (cola, tope, abandono): por decidir
-  (P02). Sus mensajes siguen disponibles por historial (HU5) y por cursor (HU6).
+- Cada grupo en push tiene un cursor de entrega en SQLite. Un grupo caído se pausa y,
+  al volver, retoma desde su cursor (D15). Sus mensajes también siguen disponibles por
+  historial (HU5) y por cursor (HU6).
 
 ### HU5 · Historial por marca de Lamport
 
 Como servidor de grupo quiero pedir lo que me perdí con `GET /history?since={lamport}`,
 tal como lo describe la sección 4 (requisito 9).
 
-- Devuelve los mensajes con `lamport` mayor que `since`, ordenados por
-  `(lamport, origin)`.
-- Si es estrictamente mayor o mayor o igual, y si la respuesta es una lista o un objeto:
-  se fija en el análisis (P06).
+- Devuelve una lista JSON con los mensajes de `lamport ≥ since` (inclusivo, D13),
+  ordenados por `(lamport, origin)`, cada uno con su `seq` (D14).
 - La especificación advierte que `since={lamport}` puede dejar por fuera los mensajes
   concurrentes con una marca menor, y recomienda el cursor de HU6.
 
@@ -107,7 +107,7 @@ pueda llamarme (sección 7, «modo alternativo»; D05).
   4 sigue valiendo (D01).
 - A diferencia de `since={lamport}`, el cursor no pierde los mensajes concurrentes que
   llegan tarde con una marca menor.
-- El nombre exacto del parámetro o de la ruta se decide en el análisis (P06).
+- El parámetro es `GET /history?after_seq={seq}`, con `limit` para paginar (D14).
 
 ### HU7 · Heartbeat en las dos direcciones
 
@@ -116,8 +116,9 @@ saber qué grupos están vivos (requisito 8).
 
 - `GET /health` del central responde rápido y sin tocar la red.
 - El central consulta `GET /fed/health` de cada servidor en push y lo marca caído
-  después de varios fallos seguidos; cuando vuelve a responder, lo marca vivo. Los
-  intervalos y los intentos se deciden en P02.
+  después de 3 fallos seguidos, consultando cada 5 s; cuando vuelve a responder, lo
+  marca vivo (D15). Un grupo en pull no recibe heartbeat: su señal de vida es la última
+  consulta (D16).
 
 ### HU8 · Especificación publicada
 
@@ -127,9 +128,9 @@ adivinar (sección 4).
 - OpenAPI 3.1 con cada ruta, cada código de respuesta y cada campo, en este repositorio.
 - Un ejemplo JSON por cada petición y cada respuesta.
 - Versionada: cada cambio queda en un registro de cambios y se anuncia a todos los
-  grupos a la vez (P09).
-- La fecha de publicación de la versión 1 está por decidir (P08); los grupos la
-  necesitan para la etapa 3, el martes 17.
+  grupos a la vez (D19).
+- La versión 1 se publica el domingo 15 (D18); los grupos la necesitan para la etapa
+  3, el martes 17.
 
 ### HU9 · Script de conformidad
 
@@ -166,23 +167,26 @@ problemas de interoperabilidad y responder dudas con evidencia.
 
 Como curso queremos que la sesión del jueves 19 funcione con todos los grupos (sección 7).
 
-- El central corre en el portátil del auxiliar, en la red de la sala (D02).
+- El central corre en la nube; el portátil del auxiliar es el respaldo si falla
+  internet en la sala (D10).
 - Conversación global: todos ven los mensajes de todos, en el mismo orden.
 - Caída y recuperación: un grupo se apaga mientras los demás escriben y, al volver,
   recupera lo perdido sin duplicados (con el historial o con el cursor).
-- Si la red no deja que el central llame a un grupo, ese grupo funciona en pull.
+- Un grupo al que el central no puede llamar funciona en pull (D11).
 
 ### HU12 · Observar el sistema durante la sesión
 
 Como auxiliar y profesor queremos ver de un vistazo qué grupos están registrados, cuáles
-están vivos y qué pasa en `#general`. Si se hace y cómo: por decidir (P07).
+están vivos y qué pasa en `#general`. Panel de solo lectura en `/` y `GET /servers`;
+rutas `/admin/…` con token del auxiliar (D17).
 
 ## Definición de terminado
 
 1. `docker compose up` levanta el central en un equipo limpio, y lo mismo corre en la VM
-   con HTTPS.
+   con HTTPS en `https://dsp.cshire.io`.
 2. Especificación OpenAPI y ejemplos JSON publicados, con registro de cambios.
 3. Script de conformidad, con parte automática y parte guiada, corriendo en Docker.
-4. El central de la VM disponible antes de la etapa 3 de los grupos (P08).
+4. El central de la VM disponible el domingo 15, antes de la etapa 3 de los grupos
+   (D18).
 5. Logs de eventos que permiten reconstruir lo que pasó con cualquier `id`.
 6. Sesión del 19: los grupos conversan en `#general` en push o en pull.
