@@ -239,8 +239,10 @@ una conexión por operación, WAL y `BEGIN IMMEDIATE` en las escrituras.
 | `mensajes` | `seq` (PK `AUTOINCREMENT`), `id` (UNIQUE), `remitente`, `origin`, `lamport`, `sent_at`, `body`, `recibido_en` | `AUTOINCREMENT` impide que `seq` se reutilice, incluso después de `/admin/reset` (A7). Índice por `(lamport, origin, id)` |
 | `servidores` | `nombre` (PK), `url`, `modo`, `registrado_en`, `renovado_en`, `visto_en`, `entregado_seq`, `lamport` | `entregado_seq` es el cursor push; `visto_en`, la última señal de vida |
 
-La deduplicación es `INSERT … ON CONFLICT (id) DO NOTHING`: si no insertó, se lee el `seq`
-original para responder.
+La deduplicación es un `INSERT … SELECT … WHERE NOT EXISTS (… WHERE id = ?)` dentro de
+`BEGIN IMMEDIATE`, con `UNIQUE(id)` como respaldo: si no insertó, se lee el `seq` original
+para responder. No se usa `ON CONFLICT (id) DO NOTHING` porque, con `AUTOINCREMENT`, el
+insert ignorado consume un `seq` igual y deja huecos (comprobado con SQLite 3.54).
 
 ## 8. Eventos del log (HU10)
 

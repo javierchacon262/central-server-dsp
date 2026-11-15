@@ -285,7 +285,10 @@ Cada paso es un commit y se comprueba antes de seguir.
 2. **Nunca se modifica un mensaje** al guardarlo o reenviarlo: viajan los seis campos de
    la sección 4 tal como se guardaron, más `seq` (A10, A13). El `id` de origen viaja
    siempre igual.
-3. **La deduplicación depende de `UNIQUE(id)`**, nunca de consultar antes de insertar.
+3. **La deduplicación es atómica:** un solo `INSERT … WHERE NOT EXISTS` bajo
+   `BEGIN IMMEDIATE`, con `UNIQUE(id)` como respaldo. Nunca un `SELECT` en una
+   transacción y el `INSERT` en otra, y nunca `ON CONFLICT DO NOTHING`, que deja huecos en
+   `seq` (CS-002 §7).
 4. **`seq` nunca se reutiliza ni retrocede**, tampoco con `/admin/reset` (A7).
 5. **Nunca se reintenta un `4xx`; nunca se abandona un mensaje que falló con `5xx` o
    timeout.** El reintento lleva el mismo `id`.
