@@ -1,0 +1,11 @@
+# HTTPS con certificado automático para el central (D09). El dominio llega por la
+# variable DOMINIO del compose.
+{$DOMINIO} {
+	# Un cuerpo de más de 1 MB se corta con 413 antes de llegar al central (CS-002 §10).
+	request_body {
+		max_size 1MB
+	}
+	encode gzip
+	header -Server
+	reverse_proxy central:9000
+}
