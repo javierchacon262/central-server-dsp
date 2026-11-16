@@ -1,0 +1,11 @@
+[project]
+name = "conformidad-dsp"
+version = "1.0.0"
+description = "Script de conformidad, parte automática: prueba /fed/health y /fed/messages del servidor de un grupo"
+requires-python = ">=3.13"
+dependencies = ["httpx==0.28.1"]
+
+[tool.pytest.ini_options]
+testpaths = ["pruebas"]
+pythonpath = ["."]
+addopts = "-q"

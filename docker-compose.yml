@@ -4,6 +4,7 @@
 #   VM en la nube (D08):    docker compose --profile nube up -d --build
 #                           (con PUBLICAR=127.0.0.1:9000 en .env, solo Caddy da a internet)
 #   Pruebas:                docker compose run --rm --build pruebas
+#                           docker compose run --rm --build pruebas-conformidad
 
 name: central-dsp
 
@@ -47,6 +48,12 @@ services:
     profiles: [pruebas]
     volumes:
       - ./especificacion:/especificacion:ro
+
+  pruebas-conformidad:
+    build:
+      context: conformidad
+      target: pruebas
+    profiles: [pruebas]
 
 volumes:
   datos:
