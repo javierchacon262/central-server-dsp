@@ -1,0 +1,6 @@
+{
+  "error": "registro inválido",
+  "detail": [
+    {"field": "url", "problem": "obligatoria en modo push: URL absoluta http o https"}
+  ]
+}

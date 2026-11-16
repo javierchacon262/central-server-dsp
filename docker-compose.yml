@@ -1,0 +1,61 @@
+# Servidor central (CS-003 §S)
+#
+#   Portátil o desarrollo:  docker compose up --build            → http://localhost:9000
+#   VM en la nube (D08):    docker compose --profile nube up -d --build
+#                           (con PUBLICAR=127.0.0.1:9000 en .env, solo Caddy da a internet)
+#   Pruebas:                docker compose run --rm --build pruebas
+#                           docker compose run --rm --build pruebas-conformidad
+
+name: central-dsp
+
+services:
+  central:
+    build:
+      context: servidor
+      target: servidor
+    image: central-dsp:local
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "${PUBLICAR:-9000}:9000"
+    volumes:
+      - datos:/datos
+    stop_grace_period: 10s
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    profiles: [nube]
+    restart: unless-stopped
+    depends_on:
+      central:
+        condition: service_healthy
+    environment:
+      DOMINIO: ${DOMINIO:-dsp.cshire.io}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_datos:/data
+      - caddy_config:/config
+
+  pruebas:
+    build:
+      context: servidor
+      target: pruebas
+    profiles: [pruebas]
+    volumes:
+      - ./especificacion:/especificacion:ro
+
+  pruebas-conformidad:
+    build:
+      context: conformidad
+      target: pruebas
+    profiles: [pruebas]
+
+volumes:
+  datos:
+  caddy_datos:
+  caddy_config:

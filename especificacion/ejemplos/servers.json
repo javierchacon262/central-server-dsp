@@ -1,0 +1,38 @@
+{
+  "last_seq": 57,
+  "servers": [
+    {
+      "server": "g1",
+      "mode": "push",
+      "url": "https://garden-orbit-candle-meadow.trycloudflare.com",
+      "state": "up",
+      "registered_at": "2026-11-10T13:52:10.318Z",
+      "last_seen": "2026-11-10T14:03:25.902Z",
+      "lamport": 45,
+      "delivered_seq": 57,
+      "pending": 0
+    },
+    {
+      "server": "g2",
+      "mode": "pull",
+      "url": null,
+      "state": "up",
+      "registered_at": "2026-11-10T13:55:41.077Z",
+      "last_seen": "2026-11-10T14:03:24.511Z",
+      "lamport": null,
+      "delivered_seq": null,
+      "pending": null
+    },
+    {
+      "server": "g3",
+      "mode": "push",
+      "url": "https://river-quartz-lantern-echo.trycloudflare.com",
+      "state": "down",
+      "registered_at": "2026-11-10T13:58:03.640Z",
+      "last_seen": "2026-11-10T14:01:12.233Z",
+      "lamport": 42,
+      "delivered_seq": 57,
+      "pending": 0
+    }
+  ]
+}

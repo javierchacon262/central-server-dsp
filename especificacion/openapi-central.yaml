@@ -1,0 +1,876 @@
+openapi: 3.1.0
+info:
+  title: Servidor central · chat distribuido (Sistemas Distribuidos, UIS)
+  version: 1.0.0
+  summary: Rutas del servidor central que llaman los servidores de grupo, el panel público y la administración.
+  description: >-
+    Esta especificación desarrolla el resumen del protocolo de la sección 4 del enunciado
+    y, ante cualquier diferencia con ese resumen, manda esta especificación. Todo lo que
+    agrega a la sección 4 (el campo `seq`, el parámetro `after_seq`, el campo `mode` y las
+    rutas de estado y de administración) se puede ignorar: un servidor de grupo que cumple
+    la sección 4 al pie de la letra funciona sin cambios en modo push (D01). Cada grupo
+    elige con `mode` en `POST /register` cómo recibe los mensajes de los demás (D11): en
+    **pull**, el central no lo llama nunca y el grupo consulta cada 1–2 s
+    `GET /history?after_seq=N`, con `N` igual al último `seq` recibido; en **push**, el
+    modo por defecto, el grupo expone su servidor con un túnel (por ejemplo, cloudflared),
+    registra la URL pública y el central le entrega cada mensaje en
+    `POST {url}/fed/messages`, ruta descrita en `openapi-grupo.yaml`. Todo el tráfico es
+    HTTP con cuerpos JSON, y los campos desconocidos se ignoran sin error en las dos
+    direcciones: el central no los guarda ni los reenvía (A13). Un cuerpo de más de 1 MB
+    lo corta el proxy con `413` antes de llegar al central. Las fechas que devuelve el
+    central son ISO 8601 en UTC con milisegundos (`2026-11-15T14:03:22.104Z`). Los
+    cambios a esta especificación se versionan en `especificacion/CHANGELOG.md`.
+servers:
+  - url: https://dsp.cshire.io
+    description: Nube (Oracle Cloud). Central de la semana de pruebas y de la sesión de interoperabilidad.
+  - url: http://localhost:9000
+    description: Local. El mismo docker compose sin Caddy; respaldo del auxiliar y desarrollo.
+tags:
+  - name: Grupos
+    description: Rutas que llama cada servidor de grupo.
+  - name: Estado
+    description: Panel de observación y estado de los servidores, públicos y de solo lectura (D17).
+  - name: Administración
+    description: Rutas del auxiliar, protegidas con el token `ADMIN_TOKEN` (D17).
+
+paths:
+  /register:
+    post:
+      tags: [Grupos]
+      operationId: registrar
+      summary: Registrar o renovar un servidor de grupo
+      description: |
+        Crea el registro de un servidor o lo renueva si el nombre ya existe. El registro no
+        vence (D16). Se recomienda renovarlo cada 30 s: así una URL de túnel que cambió se
+        corrige sola, y en pull la renovación cuenta como señal de vida.
+
+        - **Nombre nuevo:** se crea el registro y la respuesta trae `new: true`. En push,
+          el cursor de entrega arranca en el último `seq` existente; lo anterior se
+          recupera con `GET /history` (A6).
+        - **Nombre conocido:** se actualizan `url` y `mode`, se conserva el cursor y la
+          respuesta trae `new: false` (D16). Si el servidor pasa de pull a push, el cursor
+          arranca en el último `seq` existente (A6).
+        - **`400`, sin efecto:** falta `server`, el nombre no cumple el patrón, `mode` es
+          desconocido, el modo es push y falta una `url` válida, la `url` resuelve en la
+          nube a una dirección privada (A2), o ya hay 100 servidores registrados y el
+          nombre es nuevo (A1).
+
+        Todo éxito responde `200`, tanto el registro nuevo como la renovación (A8).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              register-push:
+                summary: g1 en push, como en la sección 4 (sin `mode`), con la URL de su túnel
+                value:
+                  server: "g1"
+                  url: "https://garden-orbit-candle-meadow.trycloudflare.com"
+              register-pull:
+                summary: g2 en pull, detrás de NAT y sin URL
+                value:
+                  server: "g2"
+                  mode: "pull"
+      responses:
+        '200':
+          description: Registro creado (`new` es `true`) o renovado (`new` es `false`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              examples:
+                register-respuesta:
+                  summary: Registro nuevo de g1 en push (respuesta a `register-push`)
+                  value:
+                    server: "g1"
+                    url: "https://garden-orbit-candle-meadow.trycloudflare.com"
+                    mode: "push"
+                    new: true
+                register-respuesta-pull:
+                  summary: Registro nuevo de g2 en pull (respuesta a `register-pull`)
+                  value:
+                    server: "g2"
+                    url: null
+                    mode: "pull"
+                    new: true
+                register-respuesta-renovacion:
+                  summary: Renovación de g1 (el mismo `register-push`, 30 s después)
+                  value:
+                    server: "g1"
+                    url: "https://garden-orbit-candle-meadow.trycloudflare.com"
+                    mode: "push"
+                    new: false
+        '400':
+          description: Registro inválido. No tiene efecto.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                error-400-register:
+                  summary: Registro en push sin `url`
+                  value:
+                    error: "registro inválido"
+                    detail:
+                      - field: "url"
+                        problem: "obligatoria en modo push: URL absoluta http o https"
+
+  /messages:
+    post:
+      tags: [Grupos]
+      operationId: enviarMensaje
+      summary: Entregar un mensaje para la sala global
+      description: |
+        Guarda un mensaje de un usuario del grupo para `#general` y despierta el reenvío a
+        los servidores en push, excepto al de origen. La operación es idempotente por `id`:
+
+        - **`id` nuevo y mensaje válido:** se guarda con el siguiente `seq` y la respuesta
+          trae `duplicate: false`.
+        - **`id` ya conocido:** no tiene efecto y la respuesta trae `duplicate: true` con el
+          `seq` original. Si el contenido difiere, gana el primero y la diferencia queda en
+          el log (A4).
+        - **Mensaje inválido o JSON mal formado:** `400` con `detail`, sin efecto.
+
+        La deduplicación es atómica: dos `POST` simultáneos con el mismo `id` dejan un solo
+        mensaje, y los dos reciben `200`. No hace falta estar registrado para enviar (D12):
+        un grupo que envía antes de terminar su registro no pierde mensajes.
+
+        Solo se rechaza lo que no se puede guardar (D12), porque un `4xx` no se reintenta y
+        el grupo pierde ese mensaje. Un `5xx` o la falta de respuesta se reintentan con el
+        mismo `id` y espera exponencial (requisito 6).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Message'
+            examples:
+              mensaje:
+                summary: Mensaje de ana@g3 (formato de la sección 4)
+                value:
+                  id: "6f1c2a9e-4b7d-4f0e-9a51-2c8e7d3b1f44"
+                  from: "ana@g3"
+                  origin: "g3"
+                  lamport: 42
+                  sent_at: "2026-11-10T14:03:22Z"
+                  body: "¿Ya subieron el compose?"
+      responses:
+        '200':
+          description: >-
+            Mensaje aceptado: guardado ahora (`duplicate` es `false`) o ya conocido
+            (`duplicate` es `true`, con el `seq` original). Todo éxito responde `200` (A8).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageAck'
+              examples:
+                mensaje-respuesta-nuevo:
+                  summary: Primer envío del mensaje de ana@g3
+                  value:
+                    id: "6f1c2a9e-4b7d-4f0e-9a51-2c8e7d3b1f44"
+                    seq: 57
+                    duplicate: false
+                mensaje-respuesta-duplicado:
+                  summary: Reintento del mismo mensaje (mismo `id`)
+                  value:
+                    id: "6f1c2a9e-4b7d-4f0e-9a51-2c8e7d3b1f44"
+                    seq: 57
+                    duplicate: true
+        '400':
+          description: >-
+            Mensaje inválido o JSON mal formado: un campo obligatorio ausente, vacío o de
+            otro tipo, o un límite excedido (D12). No tiene efecto y no debe reintentarse.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                error-400:
+                  summary: '`lamport` enviado como texto ("42")'
+                  value:
+                    error: "mensaje inválido"
+                    detail:
+                      - field: "lamport"
+                        problem: "debe ser un entero ≥ 0"
+
+  /history:
+    get:
+      tags: [Grupos]
+      operationId: leerHistorial
+      summary: Leer el historial de la sala global
+      description: |
+        Devuelve mensajes de `#general`, cada uno con el campo extra `seq` (D14). La
+        respuesta es siempre una **lista JSON**: sin resultados es `[]`, nunca `404`.
+
+        Hay dos formas de consulta, excluyentes:
+
+        - **`since`** (sección 4): mensajes con `lamport ≥ since`; es inclusivo (D13).
+          Orden: `(lamport, origin, id)`. Es la forma de recuperar lo perdido al arrancar o
+          al volver de una caída (requisito 9).
+        - **`after_seq`** (modo pull, D14): mensajes con `seq > after_seq`. Orden: `seq`,
+          es decir, de llegada al central.
+
+        `since` y `after_seq` juntos responden `400`. Sin ninguno de los dos, la consulta
+        equivale a `since=0`.
+
+        **Paginación.** `limit` acota la cantidad de mensajes, de 1 a 1000 (por defecto
+        1000). Con `after_seq`, se repite la consulta con el último `seq` recibido mientras
+        la lista llegue llena. Con `since` también se puede repetir con la última marca
+        recibida: como es inclusivo, llegan repetidos, que se descartan por `id`.
+
+        **Por qué pull usa `seq` y no `lamport`.** Si `g1` envía con marca 40 justo después
+        de que `g2` consultó `since=41`, `g2` nunca vuelve a pedir la marca 40 y pierde ese
+        mensaje. `seq` es el orden de llegada al central: un mensaje que llega tarde recibe
+        un `seq` mayor que todo lo que `g2` ya vio, así que la siguiente consulta lo trae.
+        El orden de **presentación** sigue siendo `(lamport, origin)`: el grupo inserta cada
+        mensaje en su lugar.
+
+        **Desempate.** La sección 4 ordena por `(lamport, origin)`. El central agrega `id`
+        como tercer criterio para que dos mensajes con la misma marca y el mismo origen,
+        que solo aparecen si un grupo tiene un error en su reloj, salgan siempre en el
+        mismo orden.
+
+        Al recibir, el grupo descarta por `id` y ajusta su reloj a `max(local, lamport) + 1`,
+        igual que con lo que recibe en `POST /fed/messages`.
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: >-
+            Marca de Lamport mínima, inclusiva (D13): mensajes con `lamport ≥ since`,
+            ordenados por `(lamport, origin, id)`. No se combina con `after_seq`.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 9007199254740991
+          example: 42
+        - name: after_seq
+          in: query
+          required: false
+          description: >-
+            Cursor del modo pull (D14): mensajes con `seq > after_seq`, ordenados por `seq`.
+            No se combina con `since`.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 9007199254740991
+          example: 55
+        - name: limit
+          in: query
+          required: false
+          description: Cantidad máxima de mensajes en la respuesta (D14).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 1000
+          example: 1000
+        - name: server
+          in: query
+          required: false
+          description: >-
+            Nombre con el que se registró el servidor que consulta. En pull, cada consulta
+            con `server` cuenta como señal de vida para el panel (`state` en
+            `GET /servers`, A3). No se valida: un nombre no registrado se ignora y la
+            consulta responde igual (A16).
+          schema:
+            type: string
+          example: g2
+      responses:
+        '200':
+          description: Lista de mensajes, cada uno con su `seq`. Vacía (`[]`) si no hay resultados.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 1000
+                items:
+                  $ref: '#/components/schemas/StoredMessage'
+              examples:
+                history-respuesta:
+                  summary: Respuesta a `after_seq=55` (o a `since=41`)
+                  value:
+                    - id: "3b9e7c10-5a2f-4d8e-b6c1-7f0a9d2e4c58"
+                      from: "luis@g1"
+                      origin: "g1"
+                      lamport: 41
+                      sent_at: "2026-11-10T14:02:58Z"
+                      body: "Buenas, g1 ya está conectado."
+                      seq: 56
+                    - id: "6f1c2a9e-4b7d-4f0e-9a51-2c8e7d3b1f44"
+                      from: "ana@g3"
+                      origin: "g3"
+                      lamport: 42
+                      sent_at: "2026-11-10T14:03:22Z"
+                      body: "¿Ya subieron el compose?"
+                      seq: 57
+                history-vacia:
+                  summary: Sin mensajes nuevos (respuesta a `after_seq=57`)
+                  value: []
+        '400':
+          description: >-
+            Parámetros inválidos: `since` y `after_seq` juntos, o un parámetro que no es un
+            entero dentro de su rango.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                error-400-history:
+                  summary: '`since` y `after_seq` en la misma consulta'
+                  value:
+                    error: "parámetros inválidos"
+                    detail:
+                      - field: "after_seq"
+                        problem: "no se puede combinar con since"
+
+  /health:
+    get:
+      tags: [Grupos]
+      operationId: salud
+      summary: Heartbeat del servidor central
+      description: >-
+        Responde sin tocar la red. Un grupo que no recibe `200` dentro de su tiempo de
+        espera cuenta un fallo; tras un número configurable de fallos marca al central como
+        caído, guarda los mensajes pendientes y los envía cuando vuelve (requisito 8).
+      responses:
+        '200':
+          description: El central está vivo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              examples:
+                health:
+                  summary: Central vivo con 57 mensajes numerados
+                  value:
+                    status: "ok"
+                    spec_version: "1.0.0"
+                    last_seq: 57
+
+  /servers:
+    get:
+      tags: [Estado]
+      operationId: listarServidores
+      summary: Estado de los servidores registrados
+      description: >-
+        Estado público de cada servidor registrado, en JSON (D17). Es la fuente de datos
+        del panel de `GET /`.
+      responses:
+        '200':
+          description: Último `seq` y estado de cada servidor registrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServersResponse'
+              examples:
+                servers:
+                  summary: g1 en push (vivo), g2 en pull (vivo) y g3 en push (caído)
+                  value:
+                    last_seq: 57
+                    servers:
+                      - server: "g1"
+                        mode: "push"
+                        url: "https://garden-orbit-candle-meadow.trycloudflare.com"
+                        state: "up"
+                        registered_at: "2026-11-10T13:52:10.318Z"
+                        last_seen: "2026-11-10T14:03:25.902Z"
+                        lamport: 45
+                        delivered_seq: 57
+                        pending: 0
+                      - server: "g2"
+                        mode: "pull"
+                        url: null
+                        state: "up"
+                        registered_at: "2026-11-10T13:55:41.077Z"
+                        last_seen: "2026-11-10T14:03:24.511Z"
+                        lamport: null
+                        delivered_seq: null
+                        pending: null
+                      - server: "g3"
+                        mode: "push"
+                        url: "https://river-quartz-lantern-echo.trycloudflare.com"
+                        state: "down"
+                        registered_at: "2026-11-10T13:58:03.640Z"
+                        last_seen: "2026-11-10T14:01:12.233Z"
+                        lamport: 42
+                        delivered_seq: 57
+                        pending: 0
+
+  /:
+    get:
+      tags: [Estado]
+      operationId: panel
+      summary: Panel de observación
+      description: >-
+        Página HTML sin dependencias externas (D17). Cada 2 s consulta `GET /servers` y
+        `GET /history?after_seq=…`, y muestra la tabla de servidores y `#general` en orden
+        `(lamport, origin)`, con el origen de cada mensaje.
+      responses:
+        '200':
+          description: Página HTML del panel.
+          content:
+            text/html:
+              schema:
+                type: string
+              examples:
+                panel:
+                  summary: Comienzo de la página (recortado)
+                  value: |
+                    <!doctype html>
+                    <html lang="es">
+                    <head>
+                      <meta charset="utf-8">
+                      <title>Servidor central · #general</title>
+                    </head>
+                    <body>
+                      <h1>Servidor central</h1>
+                      <table id="servidores">…</table>
+                      <ol id="general">…</ol>
+                    </body>
+                    </html>
+
+  /admin/servers/{server}:
+    delete:
+      tags: [Administración]
+      operationId: eliminarServidor
+      summary: Sacar un servidor del registro
+      description: >-
+        Borra el registro del servidor y su cursor de entrega; su tarea de reenvío push se
+        detiene. Exige `Authorization: Bearer <ADMIN_TOKEN>`, y el token se compara en
+        tiempo constante. Sin `ADMIN_TOKEN` configurado en el central, responde `403`;
+        con token configurado, un token ausente o incorrecto responde `401`. Cada uso
+        queda en el log.
+      security:
+        - ADMIN_TOKEN: []
+      parameters:
+        - name: server
+          in: path
+          required: true
+          description: Nombre del servidor registrado.
+          schema:
+            type: string
+          example: g3
+      responses:
+        '200':
+          description: Servidor eliminado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRemoveResponse'
+              examples:
+                admin-remove-respuesta:
+                  summary: g3 eliminado
+                  value:
+                    removed: "g3"
+        '401':
+          $ref: '#/components/responses/NoAutorizado'
+        '403':
+          $ref: '#/components/responses/AdministracionDeshabilitada'
+        '404':
+          description: No hay un servidor registrado con ese nombre. No tiene efecto.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                error-404:
+                  summary: Nombre que no está registrado
+                  value:
+                    error: "servidor no registrado"
+                    detail:
+                      - field: "server"
+                        problem: "no hay un servidor registrado con el nombre g7"
+
+  /admin/reset:
+    post:
+      tags: [Administración]
+      operationId: reiniciarHistorial
+      summary: Borrar el historial
+      description: >-
+        Borra todos los mensajes del historial. `seq` **no** vuelve a empezar (A7): un
+        grupo en pull con `after_seq = 500` sigue recibiendo los mensajes nuevos. No lleva
+        cuerpo. Exige `Authorization: Bearer <ADMIN_TOKEN>`, y el token se compara en
+        tiempo constante. Sin `ADMIN_TOKEN` configurado en el central, responde `403`;
+        con token configurado, un token ausente o incorrecto responde `401`. Cada uso
+        queda en el log.
+      security:
+        - ADMIN_TOKEN: []
+      responses:
+        '200':
+          description: Historial borrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminResetResponse'
+              examples:
+                admin-reset-respuesta:
+                  summary: Se borraron 57 mensajes; el próximo recibirá `seq` 58
+                  value:
+                    deleted: 57
+                    last_seq: 57
+        '401':
+          $ref: '#/components/responses/NoAutorizado'
+        '403':
+          $ref: '#/components/responses/AdministracionDeshabilitada'
+
+components:
+  securitySchemes:
+    ADMIN_TOKEN:
+      type: http
+      scheme: bearer
+      description: >-
+        Token del auxiliar, leído de la variable de entorno `ADMIN_TOKEN` del central. Se
+        envía como `Authorization: Bearer <ADMIN_TOKEN>`. Nunca entra al repositorio. Si
+        la variable está vacía, la administración queda deshabilitada (D17).
+
+  responses:
+    NoAutorizado:
+      description: Token ausente o incorrecto. No tiene efecto.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            error-401:
+              summary: Sin encabezado `Authorization` o con un token distinto
+              value:
+                error: "token ausente o incorrecto"
+                detail: []
+    AdministracionDeshabilitada:
+      description: >-
+        El central no tiene `ADMIN_TOKEN` configurado: todas las rutas de administración
+        responden `403`, con o sin token. No tiene efecto.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            error-403:
+              summary: Central sin `ADMIN_TOKEN`
+              value:
+                error: "administración deshabilitada: ADMIN_TOKEN no está configurado"
+                detail: []
+
+  schemas:
+    ServerName:
+      type: string
+      pattern: '^[A-Za-z0-9_-]{1,32}$'
+      description: >-
+        Nombre corto de un servidor de grupo (`g1`, `g2`, …): de 1 a 32 letras ASCII,
+        dígitos, `_` o `-`. Distingue mayúsculas: `G1` y `g1` son servidores distintos (A5).
+
+    Mode:
+      type: string
+      enum: [push, pull]
+      description: >-
+        Cómo recibe el servidor los mensajes de los demás (D11). `push`, el modo de la
+        sección 4: el central llama a `POST {url}/fed/messages`. `pull`: el central no lo
+        llama nunca y el grupo consulta `GET /history?after_seq=N`.
+
+    Message:
+      type: object
+      description: >-
+        Mensaje de la sala `#general` con el formato de la sección 4, tal como lo envía un
+        servidor de grupo en `POST /messages`. Un campo obligatorio ausente, vacío o de otro
+        tipo responde `400` (D12). Los campos desconocidos se aceptan y se ignoran sin
+        error (`additionalProperties: true`).
+      required: [id, from, origin, lamport]
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: >-
+            Identificador generado por el servidor de origen; nunca cambia, ni siquiera al
+            reenviar. Es la clave de deduplicación. Se recomienda un UUID, pero no se exige
+            (D12).
+        from:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: >-
+            Autor del mensaje. Se guarda y se reenvía tal cual; la forma `usuario@gN` es la
+            recomendada, pero no se exige.
+        origin:
+          type: string
+          minLength: 1
+          maxLength: 32
+          description: >-
+            Nombre del servidor de origen. El central no le reenvía el mensaje a ese
+            servidor. No se exige que esté registrado (D12).
+        lamport:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          description: >-
+            Marca del reloj de Lamport del servidor de origen. Debe ser un número entero:
+            `42` sí, y `42.0` se acepta como `42` (A15); `"42"`, `42.5` o `true` no. El
+            tope, 2⁵³ − 1, es el mayor entero que un cliente en JavaScript lee sin perder
+            precisión (A9). Se guarda tal cual y ordena el historial.
+        sent_at:
+          type: string
+          maxLength: 64
+          description: >-
+            Hora física de envío. Es informativo: no se valida su formato ni se usa para
+            ordenar. Si no viene, el central lo guarda y lo reenvía como `""` (A13). `null`
+            o un valor que no es texto responde `400`.
+        body:
+          type: string
+          maxLength: 10000
+          default: ""
+          description: >-
+            Texto del mensaje. Se guarda y se reenvía tal cual; si no viene, como `""`
+            (A13). `null` o un valor que no es texto responde `400`.
+
+    StoredMessage:
+      description: >-
+        Mensaje guardado por el central: el `Message` con el campo `seq` agregado. Es lo
+        que devuelve `GET /history` y lo que el central envía en push a
+        `POST {url}/fed/messages` (A10). Quien solo conoce la sección 4 puede ignorar `seq`.
+      allOf:
+        - $ref: '#/components/schemas/Message'
+        - type: object
+          required: [seq]
+          properties:
+            seq:
+              type: integer
+              minimum: 1
+              description: >-
+                Número de llegada al central, asignado por él: crece sin huecos y nunca se
+                reutiliza, ni siquiera después de `POST /admin/reset` (D05, A7).
+
+    RegisterRequest:
+      type: object
+      description: >-
+        Cuerpo de `POST /register`. La sección 4 define `server` y `url`; `mode` es la
+        extensión de D11 y por defecto vale `push`. En push, `url` es obligatoria. Los
+        campos desconocidos se aceptan y se ignoran sin error
+        (`additionalProperties: true`).
+      required: [server]
+      additionalProperties: true
+      properties:
+        server:
+          $ref: '#/components/schemas/ServerName'
+        url:
+          type: string
+          maxLength: 2048
+          description: >-
+            URL base del servidor de grupo. En push es obligatoria y debe ser absoluta,
+            `http` o `https`; el central le quita la `/` final y llama a `{url}/fed/health`
+            y `{url}/fed/messages`. En la nube, una URL de push que resuelve a una
+            dirección de loopback, privada o de enlace local responde `400` (A2). En pull
+            es opcional e informativa: el central nunca la llama, así que no la valida
+            (A14).
+        mode:
+          $ref: '#/components/schemas/Mode'
+          default: push
+      if:
+        required: [mode]
+        properties:
+          mode:
+            const: pull
+      else:
+        required: [url]
+        properties:
+          url:
+            format: uri
+            pattern: '^https?://'
+
+    RegisterResponse:
+      type: object
+      description: Registro tal como quedó guardado.
+      required: [server, url, mode, new]
+      properties:
+        server:
+          $ref: '#/components/schemas/ServerName'
+        url:
+          type: [string, 'null']
+          description: >-
+            URL registrada, sin `/` final. `null` si el servidor se registró en pull sin
+            `url`.
+        mode:
+          $ref: '#/components/schemas/Mode'
+        new:
+          type: boolean
+          description: >-
+            `true` si el nombre no estaba registrado; `false` si fue una renovación, que
+            actualiza `url` y `mode` y conserva el cursor (D16).
+
+    MessageAck:
+      type: object
+      description: Respuesta de `POST /messages`, tanto para un mensaje nuevo como para un duplicado (A8).
+      required: [id, seq, duplicate]
+      properties:
+        id:
+          type: string
+          description: El `id` del mensaje recibido.
+        seq:
+          type: integer
+          minimum: 1
+          description: El `seq` del mensaje; en un duplicado, el `seq` original.
+        duplicate:
+          type: boolean
+          description: >-
+            `false` si el mensaje se guardó ahora; `true` si el `id` ya era conocido y el
+            envío no tuvo efecto.
+
+    Error:
+      type: object
+      description: >-
+        Forma única de todas las respuestas de error del central, con su lista de problemas
+        por campo.
+      required: [error, detail]
+      properties:
+        error:
+          type: string
+          description: Descripción breve del error.
+        detail:
+          type: array
+          description: >-
+            Problemas por campo o parámetro. Vacía cuando el error no corresponde a un
+            campo, como en `401` y `403`.
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+
+    ErrorDetail:
+      type: object
+      description: Un problema de validación.
+      required: [field, problem]
+      properties:
+        field:
+          type: string
+          description: Nombre del campo o del parámetro con el problema.
+        problem:
+          type: string
+          description: Qué regla incumple.
+
+    Health:
+      type: object
+      description: Respuesta de `GET /health`.
+      required: [status, spec_version, last_seq]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+          description: Vale `ok` cuando el central responde.
+        spec_version:
+          type: string
+          description: Versión de esta especificación que implementa el central (`info.version`).
+        last_seq:
+          type: integer
+          minimum: 0
+          description: >-
+            Último `seq` asignado por el central. No retrocede, ni siquiera después de
+            `POST /admin/reset` (A7).
+
+    ServersResponse:
+      type: object
+      description: Respuesta de `GET /servers` (D17).
+      required: [last_seq, servers]
+      properties:
+        last_seq:
+          type: integer
+          minimum: 0
+          description: Último `seq` asignado por el central, como en `GET /health`.
+        servers:
+          type: array
+          description: Un elemento por servidor registrado.
+          items:
+            $ref: '#/components/schemas/ServerStatus'
+
+    ServerStatus:
+      type: object
+      description: >-
+        Estado de un servidor registrado. Los campos que solo tienen sentido en push
+        (`lamport`, `delivered_seq` y `pending`) valen `null` en pull.
+      required: [server, mode, url, state, registered_at, last_seen, lamport, delivered_seq, pending]
+      properties:
+        server:
+          $ref: '#/components/schemas/ServerName'
+        mode:
+          $ref: '#/components/schemas/Mode'
+        url:
+          type: [string, 'null']
+          description: URL registrada, sin `/` final. `null` si el servidor se registró en pull sin `url`.
+        state:
+          type: string
+          enum: [up, down]
+          description: >-
+            En push lo decide el heartbeat a `GET {url}/fed/health`: tres fallos seguidos lo
+            marcan `down` y el primer `2xx` lo vuelve a marcar `up` (D15). En pull es `up`
+            si hubo una consulta a `GET /history` con `server` o un registro en los últimos
+            60 s (A3).
+        registered_at:
+          type: string
+          format: date-time
+          description: Fecha y hora del primer registro con este nombre, en UTC.
+        last_seen:
+          type: [string, 'null']
+          format: date-time
+          description: >-
+            Fecha y hora de la última señal de vida, en UTC: en push, el heartbeat; en pull,
+            la última consulta con `server` o el último registro. `null` si todavía no hay
+            ninguna.
+        lamport:
+          type: [integer, 'null']
+          minimum: 0
+          description: >-
+            Último reloj de Lamport que reportó `GET {url}/fed/health` del grupo. `null` en
+            pull, que no recibe heartbeat, y en push mientras no haya un heartbeat exitoso.
+        delivered_seq:
+          type: [integer, 'null']
+          minimum: 0
+          description: >-
+            Cursor de entrega push: último `seq` entregado al grupo, o saltado por ser suyo
+            o por un `4xx` (D15). Solo existe en push; `null` en pull.
+        pending:
+          type: [integer, 'null']
+          minimum: 0
+          description: >-
+            Mensajes por entregar: los que tienen `seq` mayor que `delivered_seq` y no son
+            del propio servidor. Solo existe en push; `null` en pull.
+
+    FedHealth:
+      type: object
+      description: >-
+        Respuesta que el central espera de `GET {url}/fed/health` de cada grupo en push.
+        Los campos desconocidos se aceptan y se ignoran sin error
+        (`additionalProperties: true`).
+      required: [server, lamport]
+      additionalProperties: true
+      properties:
+        server:
+          type: string
+          description: Nombre del servidor de grupo.
+        lamport:
+          type: integer
+          minimum: 0
+          description: Valor actual del reloj de Lamport del grupo.
+
+    AdminRemoveResponse:
+      type: object
+      description: Respuesta de `DELETE /admin/servers/{server}`.
+      required: [removed]
+      properties:
+        removed:
+          $ref: '#/components/schemas/ServerName'
+
+    AdminResetResponse:
+      type: object
+      description: Respuesta de `POST /admin/reset`.
+      required: [deleted, last_seq]
+      properties:
+        deleted:
+          type: integer
+          minimum: 0
+          description: Cantidad de mensajes borrados.
+        last_seq:
+          type: integer
+          minimum: 0
+          description: >-
+            Último `seq` asignado, que se conserva (A7): el próximo mensaje recibe
+            `last_seq + 1`.

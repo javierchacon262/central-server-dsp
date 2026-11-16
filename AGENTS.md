@@ -8,17 +8,29 @@ se trabaja con **SPDD**.
 
 ## Dónde quedó el trabajo
 
-El 2026-11-14 se creó el repositorio y se cerró la ronda 1 de decisiones (D01–D07):
+El 2026-11-14 se creó el repositorio y se cerró la ronda 1 de decisiones (D01–D07). El
+2026-11-15 se cerró la ronda 2 (D08–D22):
 
-- el protocolo de la sección 4 del enunciado como base;
-- dos despliegues, una VM en la nube y el portátil del auxiliar en la sala;
-- SPDD con los tres entregables;
-- una VM con Docker y Caddy;
-- el modo alternativo con cursor `seq`;
-- registro abierto;
-- un script de conformidad automático y guiado.
+- el central corre siempre en la nube, en `https://dsp.cshire.io`, sobre una VM gratuita
+  de Oracle Cloud con Docker y Caddy (D08–D10);
+- cada grupo elige con `mode` si recibe en pull, con el cursor `seq`, o en push, con un
+  túnel (D11);
+- validación de forma con `400` (D12), `since` inclusivo (D13), `/history` como lista con
+  `seq` y `after_seq` (D14);
+- reenvío push con un cursor de entrega por grupo (D15) y registro que no vence (D16);
+- panel público y rutas `/admin/…` con token (D17);
+- especificación v1, central y parte automática del script publicados el domingo 15 (D18);
+- una sola aprobación del auxiliar antes del código (D22).
 
-Está la historia CS-001 con HU1–HU12. **No hay especificación ni código.**
+Están la historia CS-001 con HU1–HU12, el análisis CS-002, la especificación v1 en
+[`especificacion/`](especificacion/) y los canvas CS-003 y CS-004. El auxiliar los
+aprobó el 2026-11-15 con las propuestas A1–A16 (D23). Ese mismo día se escribieron:
+
+- el central en [`servidor/`](servidor/), con 198 pruebas que pasan en el contenedor,
+  entre ellas la de contrato contra `especificacion/`;
+- el compose con Caddy en el perfil `nube` y el script
+  [`despliegue/preparar-vm.sh`](despliegue/preparar-vm.sh) para la VM;
+- la parte automática del script de conformidad en [`conformidad/`](conformidad/).
 
 Leer en este orden:
 
@@ -26,7 +38,10 @@ Leer en este orden:
    enunciado dice del central. La sección 4 es la base del protocolo (D01).
 2. [`README.md`](README.md): estado, log de decisiones y pendientes P01–P11.
 3. [`requirements/CS-001-…-[Story]-…`](requirements/): historias HU1–HU12 y criterios.
-4. [`spdd/template/REASONS-canvas.md`](spdd/template/REASONS-canvas.md): la plantilla.
+4. [`spdd/analysis/CS-002-…`](spdd/analysis/): el contrato de cada ruta y el
+   comportamiento del central.
+5. [`especificacion/`](especificacion/): OpenAPI, ejemplos y la guía para los grupos.
+6. [`spdd/prompt/`](spdd/prompt/): los canvas CS-003 (central) y CS-004 (conformidad).
 
 ## Reglas
 
@@ -62,9 +77,7 @@ Leer en este orden:
 
 ## Próximos pasos, en orden
 
-1. Cerrar los pendientes que bloquean la especificación: P03, P05 y P06, y luego P02,
-   P04 y P08.
-2. Escribir el análisis en `spdd/analysis/` con el contrato de cada ruta.
-3. Escribir la especificación OpenAPI y los ejemplos JSON, y publicar la versión 1 (P08).
-4. Canvas y código del central; luego canvas y código del script de conformidad.
-5. Desplegar en la VM (P01) y ensayar la sesión con dos servidores de prueba.
+1. Desplegar en la VM de Oracle (D08) con el dominio `dsp.cshire.io` (D09), con
+   `despliegue/preparar-vm.sh`, y comprobar desde fuera el paso 9 de CS-003.
+2. Publicar la versión 1 y anunciarla en el foro a todos a la vez (D18, D19).
+3. Cerrar P12 (parte guiada del script) y P13 (reinicio del historial antes de la sesión).

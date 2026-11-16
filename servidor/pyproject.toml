@@ -1,0 +1,10 @@
+[project]
+name = "central"
+version = "1.0.0"
+description = "Servidor central del proyecto final de Sistemas Distribuidos (UIS)"
+requires-python = ">=3.13"
+
+[tool.pytest.ini_options]
+testpaths = ["pruebas"]
+addopts = "-p no:cacheprovider -q"
+pythonpath = ["."]
