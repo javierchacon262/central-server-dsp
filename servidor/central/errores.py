@@ -63,12 +63,18 @@ def _problema(campo: str, error: dict[str, Any]) -> str:
     return PROBLEMAS.get(campo, str(error.get("msg", "valor inválido")))
 
 
-def detalle_de(errores: list[dict[str, Any]]) -> list[dict[str, str]]:
-    """Un problema por campo, en el orden en que pydantic los encontró."""
+def detalle_de(errores: list[dict[str, Any]], con_prefijo: bool = False) -> list[dict[str, str]]:
+    """Un problema por campo, en el orden en que pydantic los encontró.
+
+    FastAPI antepone a `loc` dónde estaba el valor (`query`, `path`, `body`); solo en ese
+    caso se quita el primer elemento. Filtrar «body» en cualquier posición borraba el
+    campo `body` del mensaje y dejaba el `400` sin detalle."""
     detalle: list[dict[str, str]] = []
     vistos: set[str] = set()
     for error in errores:
-        loc = [p for p in error.get("loc", ()) if p not in ("body", "query", "path")]
+        loc = list(error.get("loc", ()))
+        if con_prefijo and loc and loc[0] in ("body", "query", "path"):
+            loc = loc[1:]
         if not loc:
             continue
         campo = str(loc[0])
@@ -109,7 +115,7 @@ async def manejar_error_http(_: Request, exc: ErrorHttp) -> JSONResponse:
 
 async def manejar_validacion(request: Request, exc: RequestValidationError) -> JSONResponse:
     titulo = TITULOS.get(request.url.path, "solicitud inválida")
-    return respuesta_error(400, titulo, detalle_de(list(exc.errors())))
+    return respuesta_error(400, titulo, detalle_de(list(exc.errors()), con_prefijo=True))
 
 
 async def manejar_starlette(_: Request, exc: StarletteHTTPException) -> JSONResponse:

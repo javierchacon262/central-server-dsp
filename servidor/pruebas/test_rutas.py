@@ -4,6 +4,8 @@ import logging
 
 import pytest
 
+from central.errores import PROBLEMAS
+
 from .conftest import TOKEN, esperar, mensaje, servidor
 
 ADMIN = {"Authorization": f"Bearer {TOKEN}"}
@@ -102,6 +104,17 @@ def test_lamport_como_texto_responde_400_con_detalle(cliente, eventos):
     assert r.json() == {"error": "mensaje inválido",
                         "detail": [{"field": "lamport", "problem": "debe ser un entero ≥ 0"}]}
     assert "RECHAZADO_400" in eventos.text and "origin=g3" in eventos.text
+
+
+@pytest.mark.parametrize(("cambio", "campo"), [
+    ({"body": None}, "body"), ({"body": "a" * 10_001}, "body"),
+    ({"sent_at": None}, "sent_at"), ({"sent_at": "x" * 65}, "sent_at"),
+])
+def test_body_y_sent_at_invalidos_nombran_el_campo(cliente, cambio, campo):
+    # El campo se llama `body`, como el prefijo que FastAPI pone en `loc`: no debe perderse.
+    r = cliente.post("/messages", json=mensaje(**cambio))
+    assert r.status_code == 400
+    assert r.json()["detail"] == [{"field": campo, "problem": PROBLEMAS[campo]}]
 
 
 @pytest.mark.parametrize("crudo", [b"{no es json", b"", b"\xff\xfe\x00"])
