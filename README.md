@@ -20,10 +20,10 @@ escribir código, y cada decisión queda registrada en este README.
 > - la [especificación v1](especificacion/) con sus ejemplos JSON;
 > - los canvas del [central (CS-003) y del script de conformidad (CS-004)](spdd/prompt/).
 >
-> Hay 23 decisiones y 2 pendientes que no bloquean. El central está escrito según CS-003
+> Hay 24 decisiones y 2 pendientes que no bloquean. El central está escrito según CS-003
 > y sus 198 pruebas pasan en el contenedor; la parte automática del script de conformidad
-> está en [`conformidad/`](conformidad/). Falta desplegarlo en `https://dsp.cshire.io`, el
-> objetivo de hoy, domingo 15 de noviembre (D18).
+> está en [`conformidad/`](conformidad/). Falta desplegarlo en `https://dsp.cshire.io`,
+> sobre una instancia EC2 de AWS (D24) en lugar de la VM de Oracle.
 
 ```mermaid
 flowchart LR
@@ -51,7 +51,7 @@ formas (D11):
 
 ```mermaid
 flowchart LR
-    subgraph NUBE["Oracle Cloud · dsp.cshire.io (D08–D10)"]
+    subgraph NUBE["AWS EC2 · dsp.cshire.io (D09, D10, D24)"]
         CA["Caddy<br/>HTTPS"] --> CE["central<br/>FastAPI"]
         CE --> DB[("SQLite<br/>en volumen")]
     end
@@ -92,6 +92,7 @@ Todo corre en contenedores (regla 6 de [`AGENTS.md`](AGENTS.md)).
 | Central en el portátil, en `http://localhost:9000` | `docker compose up --build` |
 | Pruebas del central (incluye el contrato contra `especificacion/`) | `docker compose run --rm --build pruebas` |
 | Pruebas del script de conformidad | `docker compose run --rm --build pruebas-conformidad` |
+| Crear la instancia EC2, su grupo de seguridad y la IP elástica (D24) | `AWS_PROFILE=… LLAVE_PUBLICA=~/.ssh/….pub despliegue/crear-ec2.sh` |
 | Preparar la VM y levantar central y Caddy | `ssh ubuntu@IP 'ADMIN_TOKEN=… bash -s' < despliegue/preparar-vm.sh` |
 | Actualizar la VM a lo último de `main` | el mismo comando; el `.env` ya existe y no pide el token |
 
@@ -132,7 +133,7 @@ Los archivos siguen el patrón `ID-AAAAMMDDhhmm-[Tipo]-descripcion.md`, con el p
 | D05 | **Modo alternativo con cursor de secuencia.** El central numera con `seq` cada mensaje nuevo, en orden de llegada, y un grupo que no es alcanzable consulta cada 1–2 s lo posterior a su último `seq`. *Ajustada por D11* | Consultar con `since={lamport}`; WebSocket o SSE desde el grupo | Es un campo extra que los demás ignoran (D01), y a diferencia de `since={lamport}` no pierde los mensajes concurrentes que llegan tarde con una marca menor. No pide código nuevo de conexión a los grupos | A, E | 1 |
 | D06 | **Registro abierto:** cualquier nombre de servidor se puede registrar | Lista de grupos permitidos; token por grupo | Es lo más simple: no agrega requisitos a los grupos ni pasos de administración. Se acepta el riesgo de que un nombre choque con otro y de que aparezcan mensajes de prueba en `#general` | Safeguards | 1 |
 | D07 | **Script de conformidad con dos partes.** La automática prueba `/fed/health` y `/fed/messages` del grupo. La guiada levanta un central de prueba que inyecta `5xx` y timeouts y le pide a la persona que envíe un mensaje | Solo la parte automática; checklist manual con curl | La API entre cliente y servidor de cada grupo es libre, así que el script no puede hacer enviar a un grupo por sí solo. La parte guiada cubre el envío, los reintentos y el registro, que pesan en la nota | O | 1 |
-| D08 | **La VM es una `VM.Standard.E2.1.Micro` (AMD, 1 GB) con Ubuntu 24.04 en la capa gratis de Oracle Cloud del auxiliar.** Lleva swap para construir las imágenes. Cierra P01 con D09 | Ampere A1 (ARM, más memoria, pero con capacidad intermitente en la región); EC2 en AWS; reutilizar otra VM | No cuesta nada, siempre hay capacidad y es x86 como el portátil, así que la imagen es la misma | S | 2 |
+| D08 | **La VM es una `VM.Standard.E2.1.Micro` (AMD, 1 GB) con Ubuntu 24.04 en la capa gratis de Oracle Cloud del auxiliar.** Lleva swap para construir las imágenes. Cierra P01 con D09. Ajustada por D24 | Ampere A1 (ARM, más memoria, pero con capacidad intermitente en la región); EC2 en AWS; reutilizar otra VM | No cuesta nada, siempre hay capacidad y es x86 como el portátil, así que la imagen es la misma | S | 2 |
 | D09 | **El central responde en `https://dsp.cshire.io`**, un subdominio de un dominio del auxiliar que no tiene otro uso, con un registro A sin proxy hacia la VM. Caddy obtiene el certificado solo. Cierra P01 | `sslip.io` con la IP; HTTP por IP | Un nombre estable y legible para todo el curso; si la IP cambia, solo cambia el registro A y los grupos no tocan su configuración | S | 2 |
 | D10 | **El central corre siempre en la nube, también en la sesión del jueves 19.** El portátil del auxiliar corre el mismo compose solo como respaldo si falla internet en la sala. Ajusta D02 | Central en el portátil en la red de la sala para la sesión | Los grupos corren en sus portátiles y llegan al central por internet; lo que prueban en la semana es lo mismo que corre en la sesión. Las redes Wi-Fi universitarias suelen aislar a los clientes, así que el push en la sala tampoco estaba garantizado | S | 2 |
 | D11 | **Cada grupo elige cómo recibe con un campo opcional `mode` en `POST /register`:** `"pull"` (el central no lo llama y el grupo consulta con el cursor `seq`) o `"push"` (el central llama a `POST /fed/messages` en la URL registrada, normalmente un túnel). Sin `mode` queda en push, como en la sección 4. Cierra P03 y ajusta D05: en la nube, pull es el modo normal | Solo pull; solo push con túnel obligatorio; URL vacía como señal de pull | Un portátil detrás de NAT no recibe llamadas, así que pull es lo práctico, pero un grupo que sigue la sección 4 al pie de la letra sigue funcionando con un túnel. Un campo explícito deja el estado claro en el panel | A, E | 2 |
@@ -148,6 +149,7 @@ Los archivos siguen el patrón `ID-AAAAMMDDhhmm-[Tipo]-descripcion.md`, con el p
 | D21 | **Flujo de Git:** una rama y un PR por cosa terminada, con Conventional Commits; nunca push directo a `main`, salvo el primer commit, que creó la rama. Cierra P11 | — | Cada cambio queda revisable y el registro de cambios de la especificación sale de los PR | Norms | 2 |
 | D22 | **Una sola aprobación antes del código:** el análisis, la especificación con los ejemplos y los canvas del central y del script se revisan juntos; aprobados, se escriben código, pruebas y despliegue | Dos aprobaciones (contrato y luego canvas); aprobar al final en el PR | Es lo más rápido que respeta la regla 1 de [`AGENTS.md`](AGENTS.md) y permite publicar hoy (D18) | O | 2 |
 | D23 | **Se aprueban el análisis CS-002, la especificación v1 y los canvas CS-003 y CS-004.** Las propuestas A1–A16 del análisis (§13) quedan como decisión: entre ellas, el tope de 100 servidores (A1), sin URL privadas en la nube (A2), `seq` que nunca se reutiliza (A7) y solo los seis campos de la sección 4 (A13) | Corregir antes de aprobar | Cierra la fase de aprobación (D22) y habilita el código, las pruebas y el despliegue de hoy (D18) | R, E, A, S, Safeguards | aprobación |
+| D24 | **El central corre en una instancia EC2 de AWS, en una cuenta de pruebas que aporta el auxiliar, en lugar de la VM de Oracle.** Ubuntu 24.04 en una `t3.small` (x86, 2 GB) con IP elástica. El grupo de seguridad abre 80 y 443 a todos y 22 solo a la IP de quien despliega. IMDSv2 es obligatorio, con un salto, así que los contenedores no llegan al servicio de metadatos. [`despliegue/crear-ec2.sh`](despliegue/crear-ec2.sh) crea todo, y [`preparar-vm.sh`](despliegue/preparar-vm.sh) sigue igual. Ajusta D08 | VM gratis de Oracle (D08) | La cuenta ya está aprobada y disponible hoy; la VM de Oracle seguía sin crearse y la publicación no puede esperar (D18). La IP elástica no cambia si la instancia se reinicia, así que el registro A de D09 se pone una sola vez | S, Safeguards | despliegue |
 
 ## Decisiones pendientes
 
