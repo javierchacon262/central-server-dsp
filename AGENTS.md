@@ -11,8 +11,8 @@ se trabaja con **SPDD**.
 El 2026-11-14 se creó el repositorio y se cerró la ronda 1 de decisiones (D01–D07). El
 2026-11-15 se cerró la ronda 2 (D08–D22):
 
-- el central corre siempre en la nube, en `https://dsp.cshire.io`, sobre una VM gratuita
-  de Oracle Cloud con Docker y Caddy (D08–D10);
+- el central corre siempre en la nube, en `https://dsp.cshire.io`, con Docker y Caddy
+  (D08–D10); el 2026-11-16 la VM pasó de Oracle a una instancia EC2 de AWS (D24);
 - cada grupo elige con `mode` si recibe en pull, con el cursor `seq`, o en push, con un
   túnel (D11);
 - validación de forma con `400` (D12), `since` inclusivo (D13), `/history` como lista con
@@ -77,7 +77,8 @@ Leer en este orden:
 
 ## Próximos pasos, en orden
 
-1. Desplegar en la VM de Oracle (D08) con el dominio `dsp.cshire.io` (D09), con
-   `despliegue/preparar-vm.sh`, y comprobar desde fuera el paso 9 de CS-003.
+1. Desplegar en EC2 (D24) con el dominio `dsp.cshire.io` (D09): crear la instancia con
+   `despliegue/crear-ec2.sh`, prepararla con `despliegue/preparar-vm.sh` y comprobar
+   desde fuera el paso 9 de CS-003.
 2. Publicar la versión 1 y anunciarla en el foro a todos a la vez (D18, D19).
 3. Cerrar P12 (parte guiada del script) y P13 (reinicio del historial antes de la sesión).

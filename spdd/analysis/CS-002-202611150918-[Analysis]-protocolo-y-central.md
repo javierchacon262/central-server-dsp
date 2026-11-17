@@ -318,10 +318,13 @@ flowchart LR
     Caddy.
   - En la VM se usa `docker compose --profile nube up -d`, con el puerto 9000 publicado
     solo en `127.0.0.1`.
-- La VM de Oracle (D08) necesita:
-  - los puertos 80 y 443 abiertos en la lista de seguridad y en el `iptables` de la
-    imagen de Ubuntu, que los bloquea por defecto;
-  - 2 GB de swap, porque tiene 1 GB de RAM;
+- La VM es una instancia EC2 de AWS (D24) y necesita:
+  - los puertos 80 y 443 abiertos en el grupo de seguridad. El Ubuntu de EC2 no trae
+    firewall en el host; la imagen de Oracle (D08) sí, y el script lo abre si lo
+    encuentra;
+  - IMDSv2 obligatorio con un solo salto, para que ningún contenedor llegue al servicio
+    de metadatos (refuerza A2);
+  - 2 GB de swap, como margen para construir las imágenes;
   - Docker con el plugin de compose.
 - El código llega con `git clone` del repositorio público, y la imagen se construye en
   la VM.

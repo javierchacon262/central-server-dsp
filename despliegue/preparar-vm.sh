@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Prepara la VM de Oracle Cloud (Ubuntu 24.04, VM.Standard.E2.1.Micro) y levanta el
-# central detrás de Caddy (D08, D09, CS-002 §11). Se puede correr varias veces.
+# Prepara la VM (Ubuntu 24.04: la instancia EC2 de D24, o la de Oracle de D08) y levanta
+# el central detrás de Caddy (D09, CS-002 §11). Se puede correr varias veces.
 #
 #   ssh ubuntu@IP 'bash -s' < despliegue/preparar-vm.sh            # rama main
 #   ssh ubuntu@IP 'RAMA=feat/central bash -s' < despliegue/preparar-vm.sh
@@ -17,7 +17,7 @@ DOMINIO="${DOMINIO:-dsp.cshire.io}"
 
 paso() { printf '\n==> %s\n' "$*"; }
 
-paso "Swap de 2 GB (la VM tiene 1 GB de RAM y construye la imagen)"
+paso "Swap de 2 GB (margen para construir la imagen)"
 if ! swapon --show=NAME --noheadings | grep -qx /swapfile; then
   sudo fallocate -l 2G /swapfile
   sudo chmod 600 /swapfile
@@ -27,21 +27,27 @@ fi
 grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
 swapon --show
 
-paso "iptables: abrir 80 y 443 antes del REJECT de la imagen de Oracle"
-for puerto in 80 443; do
-  if ! sudo iptables -C INPUT -p tcp -m state --state NEW --dport "$puerto" -j ACCEPT 2>/dev/null; then
-    linea=$(sudo iptables -L INPUT --line-numbers -n | awk '$2 == "REJECT" {print $1; exit}')
-    if [ -n "$linea" ]; then
-      sudo iptables -I INPUT "$linea" -p tcp -m state --state NEW --dport "$puerto" -j ACCEPT
-    else
-      sudo iptables -A INPUT -p tcp -m state --state NEW --dport "$puerto" -j ACCEPT
-    fi
-  fi
-done
-if command -v netfilter-persistent >/dev/null; then
-  sudo netfilter-persistent save >/dev/null
+paso "Firewall del host: 80 y 443"
+# El Ubuntu de EC2 no filtra en el host: los puertos se abren en el grupo de seguridad.
+# La imagen de Oracle trae un REJECT en INPUT, y las reglas van antes de él.
+linea=""
+if command -v iptables >/dev/null; then
+  linea=$(sudo iptables -L INPUT --line-numbers -n | awk '$2 == "REJECT" {print $1; exit}')
 fi
-sudo iptables -L INPUT -n --line-numbers | sed -n '1,12p'
+if [ -z "$linea" ]; then
+  echo "Sin REJECT en INPUT: no hace falta tocar iptables"
+else
+  for puerto in 80 443; do
+    if ! sudo iptables -C INPUT -p tcp -m state --state NEW --dport "$puerto" -j ACCEPT 2>/dev/null; then
+      linea=$(sudo iptables -L INPUT --line-numbers -n | awk '$2 == "REJECT" {print $1; exit}')
+      sudo iptables -I INPUT "$linea" -p tcp -m state --state NEW --dport "$puerto" -j ACCEPT
+    fi
+  done
+  if command -v netfilter-persistent >/dev/null; then
+    sudo netfilter-persistent save >/dev/null
+  fi
+  sudo iptables -L INPUT -n --line-numbers | sed -n '1,12p'
+fi
 
 paso "Docker Engine y el plugin de compose (repositorio oficial de Docker)"
 if ! command -v docker >/dev/null || ! docker compose version >/dev/null 2>&1; then

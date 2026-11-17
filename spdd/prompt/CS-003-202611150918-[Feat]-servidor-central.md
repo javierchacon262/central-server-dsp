@@ -138,7 +138,8 @@ central-server-dsp/
 ├── docker-compose.yml        central · caddy (perfil nube) · pruebas (perfil pruebas)
 ├── Caddyfile                 {$DOMINIO} → central:9000, cuerpos ≤ 1 MB
 ├── .env.example              variables de CS-002 §9, sin valores secretos
-├── despliegue/preparar-vm.sh swap, iptables, Docker, clon y compose en la VM (paso 9)
+├── despliegue/crear-ec2.sh   instancia EC2, grupo de seguridad, IP elástica y DNS (D24)
+├── despliegue/preparar-vm.sh swap, iptables si los hay, Docker, clon y compose (paso 9)
 ├── especificacion/           OpenAPI, ejemplos JSON, CHANGELOG y guía para grupos
 └── servidor/
     ├── Dockerfile            base → pruebas | servidor; usuario 10001; HEALTHCHECK /health
@@ -256,7 +257,11 @@ Cada paso es un commit y se comprueba antes de seguir.
      - un `curl` de cada ruta coincide con su ejemplo;
      - `docker compose restart` conserva los datos;
      - `docker compose run --rm pruebas` pasa.
-9. **Despliegue en la VM** (D08, D09).
+9. **Despliegue en la VM** (D09, D24).
+   - `despliegue/crear-ec2.sh` crea la instancia, el grupo de seguridad y la IP
+     elástica. Si el dominio está en Route 53 de la misma cuenta, también crea el
+     registro A. Se puede correr varias veces: busca todo por la etiqueta `Name`.
+   - `despliegue/preparar-vm.sh` la prepara por SSH y levanta el compose.
    - Comprobación desde fuera:
      - `https://dsp.cshire.io/health` responde `200` con un certificado válido;
      - dos servidores de grupo de prueba conversan, uno en pull y otro en push con un

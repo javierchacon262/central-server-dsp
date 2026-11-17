@@ -46,7 +46,7 @@ mi portátil, para que lo que se prueba en la semana sea lo mismo que corre en l
 - El historial y el registro de servidores sobreviven a `docker compose restart`
   (SQLite en un volumen, D03).
 - En la VM, el central responde por HTTPS con un certificado válido (Caddy, D04) en
-  `https://dsp.cshire.io`, sobre una VM gratuita de Oracle Cloud (D08, D09).
+  `https://dsp.cshire.io`, sobre una instancia EC2 de AWS (D09, D24).
 
 ### HU2 · Registro de servidores
 
